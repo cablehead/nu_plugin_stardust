@@ -1,7 +1,7 @@
 # nu_plugin_stardust
 
 A [Nushell](https://www.nushell.sh) plugin that embeds the
-[Stardust](https://stardust.ngrok.dev) database. Open a database, write to it,
+[Stardust](https://www.stardustdb.com) database. Open a database, write to it,
 run queries as streaming nu tables, and follow live query results, all from
 the nu prompt.
 
