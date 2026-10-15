@@ -3,6 +3,7 @@ name = "nu_plugin_stardust"
 version = "0.1.0"
 edition = "2024"
 description = "A Nushell plugin that embeds the Stardust database"
+license = "MIT"
 publish = false
 
 [dependencies]
