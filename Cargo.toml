@@ -1,0 +1,17 @@
+[package]
+name = "nu_plugin_stardust"
+version = "0.1.0"
+edition = "2024"
+description = "A Nushell plugin that embeds the Stardust database"
+publish = false
+
+[dependencies]
+# Must match the installed nu (0.116.0): plugins are refused across versions.
+nu-plugin = "=0.116.0"
+nu-protocol = { version = "=0.116.0", features = ["plugin"] }
+# The static feature links libstardust_full.a: one self-contained binary,
+# so nu can launch it without LD_LIBRARY_PATH.
+stardust = { path = "../stardust-alpha-2610112101-linux-amd64/abi/bindings/rust", features = ["static"] }
+chrono = "0.4"
+serde = { version = "1", features = ["derive"] }
+typetag = "0.2"
