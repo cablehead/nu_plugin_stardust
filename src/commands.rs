@@ -1,14 +1,17 @@
 //! The plugin's commands.
 
+use std::future::Future;
+use std::pin::pin;
 use std::sync::Arc;
-use std::time::Duration;
+use std::task::{Context, Poll, Wake, Waker};
+use std::time::{Duration, Instant};
 
 use nu_plugin::{EngineInterface, EvaluatedCall, PluginCommand, SimplePluginCommand};
 use nu_protocol::{
     Category, Example, HandlerGuard, LabeledError, ListStream, PipelineData, Record, SignalAction,
     Signals, Signature, Span, SyntaxShape, Type, Value,
 };
-use stardust::{Commit, Database, Document, Format, Options, Rows, RunOptions, Source, Status};
+use stardust::{Commit, Database, Document, Format, Options, Rows, RunOptions, Source};
 
 use crate::convert::{from_document, from_sd, sd_err, to_document};
 use crate::plugin::{DbHandle, StardustPlugin};
@@ -142,7 +145,7 @@ simple!(Open, "stardust open", |s: Signature| {
         .required("path", SyntaxShape::Filepath, "The database file.")
         .switch("no-create", "Fail if the file does not exist.", None)
         .named("lock-timeout", SyntaxShape::Duration, "Wait this long for another process's lock (default: fail at once).", None)
-        .named("plugins", SyntaxShape::Record(vec![].into()), "Stardust plugins to enable, with their settings (default: all).", None)
+        .named("plugins", SyntaxShape::Record(vec![].into()), "Stardust plugins to enable, with their settings (default: none).", None)
 });
 impl SimplePluginCommand for Open {
     type Plugin = StardustPlugin;
@@ -374,14 +377,13 @@ impl PluginCommand for Subscribe {
         let src = Src::arg(call, 1)?;
         let params = params(call)?;
         let query = db.query(src.get()).map_err(|e| sd_err(e, call.head))?;
-        let subscription = Arc::new(
-            query
-                .subscribe(params.as_ref(), &run_options(call)?)
-                .map_err(|e| sd_err(e, call.head))?,
-        );
-        // Ctrl-C cancels from nu's signal thread, which wakes a blocked `next`
+        let subscription = query
+            .subscribe(params.as_ref(), &run_options(call)?)
+            .map_err(|e| sd_err(e, call.head))?;
+        // Ctrl-C cancels from nu's signal thread, which wakes a waiting `next`
         // at once. The guard unregisters the handler when the stream drops.
-        let cancel = Arc::clone(&subscription);
+        let canceller = subscription.canceller();
+        let cancel = canceller.clone();
         let guard = engine.register_signal_handler(Box::new(move |action| {
             if let SignalAction::Interrupt = action {
                 cancel.cancel();
@@ -389,7 +391,7 @@ impl PluginCommand for Subscribe {
         }))?;
         // An interrupt that landed before the handler existed.
         if engine.signals().interrupted() {
-            subscription.cancel();
+            canceller.cancel();
         }
         let events = EventStream {
             _db: db,
@@ -407,13 +409,13 @@ impl PluginCommand for Subscribe {
 const LIVENESS: Duration = Duration::from_secs(1);
 
 /// Ctrl-C reaches the stream through a signal handler, but nothing tells a
-/// blocked iterator that nu dropped the stream (after `| first n`) or exited,
+/// waiting iterator that nu dropped the stream (after `| first n`) or exited,
 /// and the plugin cannot exit while this thread runs. So between events it
-/// pings nu, and ends when that fails.
+/// pings nu, and ends when that fails. Dropping the subscription cancels it.
 struct EventStream {
     _db: Arc<Database>,
     _guard: HandlerGuard,
-    sub: Option<Arc<stardust::Subscription>>,
+    sub: Option<stardust::Subscription>,
     engine: EngineInterface,
     span: Span,
 }
@@ -423,16 +425,17 @@ impl Iterator for EventStream {
     fn next(&mut self) -> Option<Value> {
         let span = self.span;
         loop {
-            let sub = self.sub.as_ref()?;
-            match sub.next(LIVENESS) {
-                Ok(None) => {
+            let sub = self.sub.as_mut()?;
+            // Dropping a pending `next` future loses no event, so each wait
+            // can give up after LIVENESS and start a fresh one.
+            match wait(sub.next(), LIVENESS) {
+                None => {
                     if self.engine.get_current_dir().is_err() {
-                        sub.cancel();
                         self.sub = None;
                         return None;
                     }
                 }
-                Ok(Some(event)) => {
+                Some(Ok(Some(event))) => {
                     let result = match from_document(&event.result, span) {
                         Ok(v) => v,
                         Err(e) => Value::error(e.into(), span),
@@ -444,11 +447,13 @@ impl Iterator for EventStream {
                     record.push("result", result);
                     return Some(Value::record(record, span));
                 }
-                Err(e) => {
+                // Cancelled, or the database closed.
+                Some(Ok(None)) => {
                     self.sub = None;
-                    if e.status == Status::CANCELLED || e.status == Status::CLOSED {
-                        return None;
-                    }
+                    return None;
+                }
+                Some(Err(e)) => {
+                    self.sub = None;
                     return Some(Value::error(sd_err(e, span).into(), span));
                 }
             }
@@ -456,11 +461,29 @@ impl Iterator for EventStream {
     }
 }
 
-impl Drop for EventStream {
-    fn drop(&mut self) {
-        if let Some(sub) = self.sub.take() {
-            sub.cancel();
+/// Polls `future` on this thread for up to `timeout`, parking between polls.
+/// The binding's subscriptions are async only; nu's streams are iterators.
+fn wait<F: Future>(future: F, timeout: Duration) -> Option<F::Output> {
+    struct Unpark(std::thread::Thread);
+    impl Wake for Unpark {
+        fn wake(self: Arc<Self>) {
+            self.0.unpark();
         }
+    }
+    let waker = Waker::from(Arc::new(Unpark(std::thread::current())));
+    let mut context = Context::from_waker(&waker);
+    let mut future = pin!(future);
+    let deadline = Instant::now() + timeout;
+    loop {
+        if let Poll::Ready(output) = future.as_mut().poll(&mut context) {
+            return Some(output);
+        }
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return None;
+        }
+        // Wakes early on unpark; a spurious wake just polls again.
+        std::thread::park_timeout(left);
     }
 }
 

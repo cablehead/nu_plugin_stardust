@@ -5,8 +5,8 @@ A [Nushell](https://www.nushell.sh) plugin that embeds the
 run queries as streaming nu tables, and follow live query results, all from
 the nu prompt.
 
-This is a prototype against Stardust's synchronous Rust binding (release
-`alpha-2610112101`). It doesn't include Stardust itself: you need your own
+This is a prototype against Stardust's Rust binding (release
+`alpha-2610171653`). It doesn't include Stardust itself: you need your own
 release download and license token.
 
 ## Requirements
@@ -17,11 +17,11 @@ release download and license token.
 - A Stardust release for your platform, extracted **next to this repo**:
 
   ```
-  ~/stardust-alpha-2610112101-linux-amd64/   # the release
-  ~/nu_plugin_stardust/                      # this repo
+  ~/stardust-alpha-2610171653/   # the release
+  ~/nu_plugin_stardust/          # this repo
   ```
 
-  `Cargo.toml` points at `../stardust-alpha-2610112101-linux-amd64/abi/bindings/rust`.
+  `Cargo.toml` points at `../stardust-alpha-2610171653/abi/bindings/rust`.
   Edit that path for another release or location.
 - A Stardust license token (the `v4.public.…` text from your account page).
 
@@ -161,12 +161,15 @@ Entity references stay as `{#link id}` records.
   `engine.set_gc_disabled(true)`, and re-enables it when the last one closes.
 - **Threads.** In this release the database and its handles are `Send + Sync`,
   so one plugin process serves every call. All jobs in a nu session share it.
-- **Subscriptions.** The binding only offers a blocking `next(max_wait)`.
-  - Ctrl-C: a signal handler (`engine.register_signal_handler`) calls
-    `subscription.cancel()`, which wakes the blocked `next` at once.
-  - nu exiting: nothing tells a blocked iterator that nu has gone, and the
+- **Subscriptions.** The binding's `next` is async; nu streams are iterators.
+  So the stream polls `next().await` on its own thread, parking until
+  Stardust wakes it.
+  - Ctrl-C: a signal handler (`engine.register_signal_handler`) calls a
+    `Canceller`, which wakes the waiting `next` at once.
+  - nu exiting: nothing tells a waiting iterator that nu has gone, and the
     plugin can't exit while that thread runs. So between events the stream
-    waits at most 1 s, pings nu, and ends when the ping fails.
+    waits at most 1 s, pings nu, and ends when the ping fails. A `next`
+    future dropped mid-wait loses no event.
 
 ## Known limitations
 
@@ -181,11 +184,8 @@ Entity references stay as `{#link id}` records.
 - **Abandoned streams linger.** After `stardust subscribe … | first n`, the
   subscription ends at its next event, not immediately.
 
-The last three come from the same gap: neither nu nor Stardust tells a blocked
-subscription that its reader has gone. A notification hook in Stardust's
-subscription ABI, which would also allow an async `next()` without a thread
-per subscriber, is sketched here:
-https://gist.github.com/cablehead/7c0078019081652047aec648497bf1d0
+The last three come from the same gap: nu doesn't tell a plugin's iterator
+that its reader has gone.
 
 ## Smoke test
 
