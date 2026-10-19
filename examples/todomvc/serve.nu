@@ -1,5 +1,19 @@
-# TodoMVC on Stardust. Writes are short requests that commit a patch; reads
-# are one SSE stream per viewer, fed by a live query.
+# TodoMVC on Stardust.
+#
+# How the page stays up to date:
+#
+# - On load, the page opens one connection, GET /todos/updates, and keeps
+#   it open. The server sends the whole todo section down it straight away,
+#   then again every time the todo list changes in the database. Datastar
+#   swaps each copy into the page, changing only what differs.
+#
+# - Each click is a separate, short request: POST /todos/add,
+#   DELETE /todos/{id}, and so on. It changes the database and returns
+#   204, with no HTML. The page doesn't update from that response; it
+#   updates when the change arrives over the open connection, the same
+#   way it does in every other tab viewing the list.
+#
+# Reads and writes travel on different requests. Datastar calls this CQRS.
 #
 #   http-nu --datastar --plugin ../../target/release/nu_plugin_stardust :3001 serve.nu
 
