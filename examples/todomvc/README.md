@@ -41,8 +41,13 @@ cd examples/todomvc
 http-nu --datastar --plugin ../../target/release/nu_plugin_stardust :3001 serve.nu
 ```
 
-Visit http://localhost:3001. The database is `./todos.db`; delete it to
-start over.
+Visit http://localhost:3001. The database is `todos.db` next to `serve.nu`;
+delete it to start over. `serve.nu` finds its files relative to itself, so it
+can be run or `source`d from any directory.
+
+On [cross.stream](https://www.cross.stream) sites, the database goes in
+`$env.CROSS_STREAM_SITE_STATE`, which survives deploys, and the license is
+read from `stardust.license` there if `$env.STARDUST_LICENSE` isn't set.
 
 Don't use `-w`: a reload opens `todos.db` again while the old script still
 holds it, and Stardust refuses with `locked`.

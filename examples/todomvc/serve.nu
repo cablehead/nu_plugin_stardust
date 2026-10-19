@@ -6,7 +6,19 @@
 use http-nu/router *
 use http-nu/datastar *
 
-let db = stardust open ./todos.db
+# Files are found next to this script, so it can be run or sourced from
+# anywhere. Data goes in $env.CROSS_STREAM_SITE_STATE on cross.stream, which
+# survives deploys, or next to the script otherwise.
+const here = path self .
+let state = $env.CROSS_STREAM_SITE_STATE? | default $here
+
+# The plugin reads $env.STARDUST_LICENSE; load it from state/ if it's there.
+let license = $state | path join stardust.license
+if $env.STARDUST_LICENSE? == null and ($license | path exists) {
+  $env.STARDUST_LICENSE = open $license | str trim
+}
+
+let db = stardust open ($state | path join todos.db)
 
 # The read model every viewer sees: all todos, oldest first.
 stardust define $db queries todos/list '{
@@ -38,8 +50,8 @@ let find = {|id|
   stardust query $db todos/completed --params {id: {'#link': $id}} | get -o 0
 }
 
-let index = .mj compile templates/index.html
-let section = .mj compile templates/todos.html
+let index = .mj compile ($here | path join templates/index.html)
+let section = .mj compile ($here | path join templates/todos.html)
 
 def not-found [] {
   "Not Found" | metadata set { merge {'http.response': {status: 404}} }
@@ -119,7 +131,7 @@ def view [event: record] {
       }
     )
 
-    (route {method: GET} {|req ctx| .static ./www $req.path })
+    (route {method: GET} {|req ctx| .static ($here | path join www) $req.path })
 
     (route true {|req ctx| not-found })
   ]
