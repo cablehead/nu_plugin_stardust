@@ -125,11 +125,12 @@ def view [event: record] {
 
     (
       route {method: GET path: "/"} {|req ctx|
-        # og:image must be absolute: https, unless a proxy says otherwise or
-        # this is a local run
+        # og:image must be absolute: https, unless this is a local run.
+        # X-Forwarded-Proto can't be trusted for this: behind a chain of
+        # proxies the last hop may be plain http.
         let host = $req.headers.host
         let local = $host =~ '^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$'
-        let scheme = $req.headers.x-forwarded-proto? | default (if $local { "http" } else { "https" })
+        let scheme = if $local { "http" } else { "https" }
         {datastar: $DATASTAR_JS_PATH url: $"($scheme)://($host)/"} | .mj render $index
       }
     )
