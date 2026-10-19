@@ -221,6 +221,12 @@ Entity references stay as `{#link id}` records.
     waits at most 1 s, pings nu, and ends when the ping fails. A `next`
     future dropped mid-wait loses no event.
 
+## Example: TodoMVC
+
+[`examples/todomvc`](examples/todomvc) is the Datastar TodoMVC served by
+http-nu, which loads this plugin with `--plugin`. Writes are patches, and
+each viewer streams a live query over SSE.
+
 ## Known limitations
 
 - **One process per database file.** Stardust takes an exclusive lock, so a
@@ -257,4 +263,5 @@ src/plugin.rs    open databases, handles, license loading
 src/commands.rs  the commands
 src/convert.rs   nu values <-> Stardust documents (with unit tests)
 smoke.nu         end-to-end test
+examples/todomvc Datastar TodoMVC on http-nu, state in Stardust
 ```

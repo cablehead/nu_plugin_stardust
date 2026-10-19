@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TodoMVC - Datastar & Stardust</title>
+    <meta
+      name="description"
+      content="A simple todo app demonstrating Datastar reactivity with http-nu, Nushell, and a Stardust database."
+    >
+    <link rel="stylesheet" href="style.css">
+    <script type="module" src="{{ datastar }}"></script>
+  </head>
+  <body>
+    <main>
+      <h1>TodoMVC</h1>
+      <div style="text-align: center; color: var(--text-secondary); margin: 0; padding: 0 1em 0.5em 1em">
+        <p style="margin: 0; padding-top: 0 !important; line-height: 1.8; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0.3em">
+          A simple todo app demonstrating
+          <a
+            href="https://data-star.dev/examples/todomvc"
+            class="card"
+            style="transform: rotate(-1.5deg)"
+          >
+            <span>Datastar</span>
+          </a>
+          reactivity with
+          <a
+            href="https://github.com/cablehead/http-nu"
+            class="card"
+            style="transform: rotate(1deg)"
+          >
+            <span>HTTP-NU</span>
+          </a>
+          ,
+          <a
+            href="https://www.nushell.sh"
+            class="card"
+            style="transform: rotate(-0.8deg)"
+          >
+            <span>Nushell</span>
+          </a>
+          , and
+          <a
+            href="https://www.stardustdb.com"
+            class="card"
+            style="transform: rotate(1.2deg)"
+          >
+            <span>Stardust</span>
+          </a>
+          . See the
+          <a
+            href="https://github.com/cablehead/nu_plugin_stardust/tree/main/examples/todomvc"
+            class="card"
+            style="transform: rotate(0.5deg)"
+          >
+            <span>Source</span>
+          </a>
+          for this complete example.
+        </p>
+      </div>
+
+      <header>
+        <label>
+          <input
+            type="checkbox"
+            data-on:click__prevent="@post('/todos/toggle-all')"
+            data-init="el.checked = false"
+          />
+          Toggle All
+        </label>
+        <input
+          type="text"
+          placeholder="What needs to be done?"
+          data-bind:input
+          data-on:keydown="
+            evt.key === 'Enter' && $input.trim() && @post('/todos/add') && ($input = '');
+          "
+        />
+      </header>
+
+      <section id="todos-section" data-init="@get('/todos/updates')">
+        <!-- Dynamic todo list and footer will be rendered here -->
+      </section>
+    </main>
+  </body>
+</html>
