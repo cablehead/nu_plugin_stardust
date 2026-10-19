@@ -111,7 +111,13 @@ def view [event: record] {
       }
     )
 
-    (route {method: GET path: "/"} {|req ctx| {datastar: $DATASTAR_JS_PATH} | .mj render $index })
+    (
+      route {method: GET path: "/"} {|req ctx|
+        # og:image must be absolute, so build the page's URL from the request
+        let scheme = $req.headers.x-forwarded-proto? | default http
+        {datastar: $DATASTAR_JS_PATH url: $"($scheme)://($req.headers.host)/"} | .mj render $index
+      }
+    )
 
     (route {method: GET} {|req ctx| .static ./www $req.path })
 
