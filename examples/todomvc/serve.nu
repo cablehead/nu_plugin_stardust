@@ -125,9 +125,12 @@ def view [event: record] {
 
     (
       route {method: GET path: "/"} {|req ctx|
-        # og:image must be absolute, so build the page's URL from the request
-        let scheme = $req.headers.x-forwarded-proto? | default http
-        {datastar: $DATASTAR_JS_PATH url: $"($scheme)://($req.headers.host)/"} | .mj render $index
+        # og:image must be absolute: https, unless a proxy says otherwise or
+        # this is a local run
+        let host = $req.headers.host
+        let local = $host =~ '^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$'
+        let scheme = $req.headers.x-forwarded-proto? | default (if $local { "http" } else { "https" })
+        {datastar: $DATASTAR_JS_PATH url: $"($scheme)://($host)/"} | .mj render $index
       }
     )
 
