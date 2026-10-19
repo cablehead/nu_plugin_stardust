@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use nu_plugin::{EngineInterface, EvaluatedCall, PluginCommand, SimplePluginCommand};
 use nu_protocol::{
     Category, Example, HandlerGuard, LabeledError, ListStream, PipelineData, Record, SignalAction,
-    Signals, Signature, Span, SyntaxShape, Type, Value,
+    Signals, Signature, Span, Spanned, SyntaxShape, Type, Value,
 };
 use stardust::{Commit, Database, Document, Format, Options, Rows, RunOptions, Source};
 
@@ -53,18 +53,57 @@ fn db_arg(sig: Signature) -> Signature {
     sig.required("db", SyntaxShape::Any, "A database from `stardust open`.")
 }
 
-/// A definition source: a stored path (string) or an inline definition (record).
+/// Adds `--format`, which says how string documents are written.
+fn format_flag(sig: Signature) -> Signature {
+    sig.named(
+        "format",
+        SyntaxShape::String,
+        "How string documents are written: dust (default), json or edn. Binary is TRON.",
+        Some('f'),
+    )
+}
+
+/// The format of string documents, from `--format`.
+fn format(call: &EvaluatedCall) -> Result<Format, LabeledError> {
+    let Some(flag) = call.get_flag::<Spanned<String>>("format")? else {
+        return Ok(Format::DUST);
+    };
+    match flag.item.as_str() {
+        "dust" => Ok(Format::DUST),
+        "json" => Ok(Format::JSON),
+        "edn" => Ok(Format::EDN),
+        _ => Err(LabeledError::new("unknown format").with_label("expected dust, json or edn", flag.span)),
+    }
+}
+
+/// A document from a nu value: a string is text in `format`, binary is TRON,
+/// and anything else is nu data.
+fn document(value: &Value, format: Format) -> Result<Document, LabeledError> {
+    let span = value.span();
+    match value {
+        Value::String { val, .. } => stardust::parse(val, format).map_err(|e| sd_err(e, span)),
+        Value::Binary { val, .. } => stardust::parse(val, Format::TRON).map_err(|e| sd_err(e, span)),
+        other => to_document(other),
+    }
+}
+
+/// A definition source: a stored path or an inline definition.
 enum Src {
     Path(String),
     Inline(Document),
 }
 
 impl Src {
+    /// A string is a document too, so a stored path is a document that holds
+    /// only a string: `people/by_age` in DUST, `"people/by_age"` in JSON.
     fn arg(call: &EvaluatedCall, index: usize) -> Result<Src, LabeledError> {
-        match call.req::<Value>(index)? {
-            Value::String { val, .. } => Ok(Src::Path(val)),
-            other => Ok(Src::Inline(to_document(&other)?)),
+        let value = call.req::<Value>(index)?;
+        let doc = document(&value, format(call)?)?;
+        let root = doc.root().and_then(|id| doc.read(id)).map_err(|e| sd_err(e, value.span()))?;
+        if root.kind == stardust::Kind::STRING {
+            return Ok(Src::Path(root.text.to_string()));
         }
+        Ok(Src::Inline(doc))
     }
 
     fn get(&self) -> Source<'_> {
@@ -76,7 +115,8 @@ impl Src {
 }
 
 fn params(call: &EvaluatedCall) -> Result<Option<Document>, LabeledError> {
-    call.get_flag::<Value>("params")?.map(|v| to_document(&v)).transpose()
+    let format = format(call)?;
+    call.get_flag::<Value>("params")?.map(|v| document(&v, format)).transpose()
 }
 
 fn run_options(call: &EvaluatedCall) -> Result<RunOptions, LabeledError> {
@@ -96,7 +136,7 @@ fn run_options(call: &EvaluatedCall) -> Result<RunOptions, LabeledError> {
 }
 
 fn with_run_flags(sig: Signature) -> Signature {
-    sig.named("params", SyntaxShape::Record(vec![].into()), "Parameters, merged over stored defaults.", Some('p'))
+    format_flag(sig).named("params", SyntaxShape::Any, "Parameters, merged over stored defaults.", Some('p'))
         .named("as-of", SyntaxShape::Int, "Run a stored definition as of this transaction.", None)
         .named("max-cost", SyntaxShape::Duration, "CPU time limit for the run.", None)
 }
@@ -210,7 +250,11 @@ impl SimplePluginCommand for Close {
 // ---------------------------------------------------------------- writes
 
 simple!(Patch, "stardust patch", |s: Signature| {
-    db_arg(s.input_output_type(Type::record(), Type::record()))
+    format_flag(db_arg(s.input_output_types(vec![
+        (Type::record(), Type::record()),
+        (Type::String, Type::record()),
+        (Type::Binary, Type::record()),
+    ])))
 });
 impl SimplePluginCommand for Patch {
     type Plugin = StardustPlugin;
@@ -218,25 +262,32 @@ impl SimplePluginCommand for Patch {
         "stardust patch"
     }
     fn description(&self) -> &str {
-        "Commit an entity-keyed merge patch from the input record as one transaction."
+        "Commit an entity-keyed merge patch as one transaction."
     }
     fn extra_description(&self) -> &str {
-        "Keys like `#_ada` name new entities; the result's `ids` maps them to entity IDs."
+        "The patch is a record, DUST text (or the --format given), or TRON binary. Keys like `#_ada` name new entities; the result's `ids` maps them to entity IDs."
     }
     fn signature(&self) -> Signature {
         Self::sig()
     }
     fn examples(&self) -> Vec<Example<'_>> {
-        vec![Example {
-            example: "{'#_ada': {name: Ada role: engineer age: 36}} | stardust patch $db",
-            description: "Create a person",
-            result: None,
-        }]
+        vec![
+            Example {
+                example: "'{#_ada {name Ada role engineer age 36}}' | stardust patch $db",
+                description: "Create a person, as DUST",
+                result: None,
+            },
+            Example {
+                example: "{'#_ada': {name: Ada role: engineer age: 36}} | stardust patch $db",
+                description: "The same, as a record: quote #_ keys, since # starts a nu comment",
+                result: None,
+            },
+        ]
     }
     fn run(&self, plugin: &StardustPlugin, engine: &EngineInterface, call: &EvaluatedCall, input: &Value) -> Result<Value, LabeledError> {
         plugin.ensure_licensed(engine, call.head)?;
         let db = plugin.db(call, 0)?;
-        let patch = to_document(input)?;
+        let patch = document(input, format(call)?)?;
         let commit = db.merge_patch(&patch, None).map_err(|e| sd_err(e, input.span()))?;
         Ok(commit_value(&commit, call.head))
     }
@@ -244,7 +295,7 @@ impl SimplePluginCommand for Patch {
 
 simple!(Mutate, "stardust mutate", |s: Signature| {
     with_run_flags(db_arg(s.input_output_type(Type::Nothing, Type::record())))
-        .required("mutation", SyntaxShape::Any, "A stored mutation path, or an inline definition record.")
+        .required("mutation", SyntaxShape::Any, "An inline definition (a record, or DUST text), or a stored mutation path.")
 });
 impl SimplePluginCommand for Mutate {
     type Plugin = StardustPlugin;
@@ -287,7 +338,7 @@ impl PluginCommand for Query {
     fn signature(&self) -> Signature {
         with_run_flags(db_arg(Signature::build(self.name())))
             .input_output_type(Type::Nothing, Type::list(Type::Any))
-            .required("query", SyntaxShape::Any, "A stored query path, or an inline definition record.")
+            .required("query", SyntaxShape::Any, "An inline definition (a record, or DUST text), or a stored query path.")
             .named("page-size", SyntaxShape::Int, "Rows per page (0: the engine default).", None)
             .category(Category::Database)
     }
@@ -295,8 +346,13 @@ impl PluginCommand for Query {
         vec![
             Example { example: "stardust query $db people/by_age --params {min: 30}", description: "Run a stored query", result: None },
             Example {
-                example: "stardust query $db {find: ['?name'] where: [['?e' name '?name']]}",
+                example: "stardust query $db {find: [?name] where: [[?e name ?name]]}",
                 description: "Run an inline query",
+                result: None,
+            },
+            Example {
+                example: "stardust query $db '{find [?name] where [[?e name ?name]]}'",
+                description: "The same, as DUST",
                 result: None,
             },
         ]
@@ -370,7 +426,7 @@ impl PluginCommand for Subscribe {
     fn signature(&self) -> Signature {
         with_run_flags(db_arg(Signature::build(self.name())))
             .input_output_type(Type::Nothing, Type::list(Type::record()))
-            .required("query", SyntaxShape::Any, "A stored query path, or an inline definition record.")
+            .required("query", SyntaxShape::Any, "An inline definition (a record, or DUST text), or a stored query path.")
             .category(Category::Database)
     }
     fn run(&self, plugin: &StardustPlugin, engine: &EngineInterface, call: &EvaluatedCall, _: PipelineData) -> Result<PipelineData, LabeledError> {
@@ -492,10 +548,10 @@ fn wait<F: Future>(future: F, timeout: Duration) -> Option<F::Output> {
 // ---------------------------------------------------------------- definitions
 
 simple!(Define, "stardust define", |s: Signature| {
-    db_arg(s.input_output_type(Type::Nothing, Type::record()))
+    format_flag(db_arg(s.input_output_type(Type::Nothing, Type::record())))
         .required("kind", SyntaxShape::String, "queries, mutations, schemas or expressions.")
         .required("path", SyntaxShape::String, "The definition's path, e.g. people/by_age.")
-        .required("definition", SyntaxShape::Any, "A merge patch onto the definition; null deletes it.")
+        .required("definition", SyntaxShape::Any, "A merge patch onto the definition, as a record or DUST text; null deletes it.")
 });
 impl SimplePluginCommand for Define {
     type Plugin = StardustPlugin;
@@ -510,7 +566,7 @@ impl SimplePluginCommand for Define {
     }
     fn examples(&self) -> Vec<Example<'_>> {
         vec![Example {
-            example: "stardust define $db queries people/by_age {find: ['?name'] parameters: {min: 18} where: [['?e' name '?name'] ['?e' age '?age'] ['>=' '?age' '?min']]}",
+            example: "stardust define $db queries people/by_age '{find [?name] parameters {min 18} where [[?e name ?name] [?e age ?age] [>= ?age ?min]]}'",
             description: "Store a query with a default parameter",
             result: None,
         }]
@@ -520,7 +576,7 @@ impl SimplePluginCommand for Define {
         let db = plugin.db(call, 0)?;
         let kind: String = call.req(1)?;
         let path: String = call.req(2)?;
-        let patch = to_document(&call.req::<Value>(3)?)?;
+        let patch = document(&call.req::<Value>(3)?, format(call)?)?;
         let commit = db.patch_definition(&kind, &path, &patch).map_err(|e| sd_err(e, call.head))?;
         Ok(commit_value(&commit, call.head))
     }
@@ -583,9 +639,9 @@ impl SimplePluginCommand for Definitions {
 // ---------------------------------------------------------------- expressions
 
 simple!(Eval, "stardust eval", |s: Signature| {
-    s.input_output_type(Type::Nothing, Type::Any)
+    format_flag(s.input_output_type(Type::Nothing, Type::Any))
         .required("expression", SyntaxShape::Any, "An expression as a list, or as DUST text.")
-        .named("input", SyntaxShape::Record(vec![].into()), "Values for the expression's ?variables.", Some('i'))
+        .named("input", SyntaxShape::Any, "Values for the expression's ?variables.", Some('i'))
 });
 impl SimplePluginCommand for Eval {
     type Plugin = StardustPlugin;
@@ -596,7 +652,7 @@ impl SimplePluginCommand for Eval {
         "Build and evaluate a Stardust expression. No database needed."
     }
     fn extra_description(&self) -> &str {
-        "A string argument is parsed as DUST text; any other value is the expression itself."
+        "A string is parsed as DUST text (or the --format given); any other value is the expression itself."
     }
     fn signature(&self) -> Signature {
         Self::sig()
@@ -604,18 +660,16 @@ impl SimplePluginCommand for Eval {
     fn examples(&self) -> Vec<Example<'_>> {
         vec![
             Example { example: "stardust eval '[* ?n 2]' --input {n: 21}", description: "DUST text", result: None },
-            Example { example: "stardust eval ['*' '?n' 2] --input {n: 21}", description: "A nu list", result: None },
+            Example { example: "stardust eval [* ?n 2] --input {n: 21}", description: "A nu list", result: None },
         ]
     }
     fn run(&self, plugin: &StardustPlugin, engine: &EngineInterface, call: &EvaluatedCall, _: &Value) -> Result<Value, LabeledError> {
         plugin.ensure_licensed(engine, call.head)?;
         let expr: Value = call.req(0)?;
         let span = expr.span();
-        let expression = match &expr {
-            Value::String { val, .. } => stardust::parse(val, Format::DUST).map_err(|e| sd_err(e, span))?,
-            other => to_document(other)?,
-        };
-        let input = call.get_flag::<Value>("input")?.map(|v| to_document(&v)).transpose()?;
+        let format = format(call)?;
+        let expression = document(&expr, format)?;
+        let input = call.get_flag::<Value>("input")?.map(|v| document(&v, format)).transpose()?;
         let program = stardust::build(&expression, None).map_err(|e| sd_err(e, span))?;
         let result = program.evaluate(input.as_ref(), None).map_err(|e| sd_err(e, span))?;
         from_document(&result, call.head)
@@ -689,7 +743,7 @@ impl SimplePluginCommand for Plugins {
 }
 
 simple!(PluginCall, "stardust plugin-call", |s: Signature| {
-    db_arg(s.input_output_type(Type::Nothing, Type::Any))
+    format_flag(db_arg(s.input_output_type(Type::Nothing, Type::Any)))
         .required("plugin", SyntaxShape::String, "An enabled plugin, e.g. reactors.")
         .required("operation", SyntaxShape::String, "The operation, e.g. status or sync.")
         .optional("request", SyntaxShape::Any, "The operation's request, if it takes one.")
@@ -726,7 +780,8 @@ impl SimplePluginCommand for PluginCall {
         let db = plugin.db(call, 0)?;
         let name: String = call.req(1)?;
         let operation: String = call.req(2)?;
-        let request = call.opt::<Value>(3)?.map(|v| to_document(&v)).transpose()?;
+        let format = format(call)?;
+        let request = call.opt::<Value>(3)?.map(|v| document(&v, format)).transpose()?;
         let result = db
             .plugin_call(&name, &operation, request.as_ref())
             .map_err(|e| sd_err(e, call.head))?;

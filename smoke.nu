@@ -54,6 +54,16 @@ def main [] {
     assert equal (stardust definitions $db queries) []
     print "definitions: ok"
 
+    # documents as text: DUST by default, JSON with --format; a bare name is a path
+    let names = $people.queries.names
+    assert equal (stardust query $db ($names.query | to dust)) $names.expected
+    assert equal (stardust query $db ($names.query | to json) --format json) $names.expected
+    stardust define $db queries people/names ($names.query | to dust) | ignore
+    assert equal (stardust query $db people/names) $names.expected
+    assert equal (stardust query $db '"people/names"' --format json) $names.expected
+    stardust define $db queries people/names null | ignore
+    print "documents: ok"
+
     # live: commit from a background job while the subscription waits
     job spawn { sleep 500ms; $live.hire | stardust patch $db } | ignore
     let events = stardust subscribe $db $people.queries.names.query | first 2

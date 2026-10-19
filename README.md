@@ -59,14 +59,33 @@ stardust license    # holder, tier and dates; never the token
 ```nu
 let db = stardust open ~/people.db
 
-# keys like '#_ada' name new entities; quote them, since # starts a nu comment
-{
-    '#_ada': {name: Ada role: engineer age: 36}
-    '#_bob': {name: Bob role: engineer age: 41}
-    '#_cy':  {name: Cy  role: designer age: 29}
-} | stardust patch $db
+# keys like #_ada name new entities
+'{
+  #_ada {name Ada role engineer age 36}
+  #_bob {name Bob role engineer age 41}
+  #_cy  {name Cy  role designer age 29}
+}' | stardust patch $db
 # => {status: committed, transaction: 4, facts: 9, committed_at: …, ids: {#_ada: 1, #_bob: 2, #_cy: 3}}
 ```
+
+### Documents: records or DUST
+
+Anywhere a command takes a document (a patch, a query or mutation, a
+definition, `--params`, `--input`), it accepts:
+
+- a record or list: nu data
+- a string: DUST text, or JSON or EDN with `--format json` / `--format edn`
+- binary: TRON
+
+So the patch above can also be a record. Quote the `#_` keys there, since `#`
+starts a nu comment:
+
+```nu
+{'#_ada': {name: Ada role: engineer age: 36}} | stardust patch $db
+```
+
+A string that holds only a name, like `people/by_age`, is a stored
+definition's path.
 
 ### Query
 
@@ -74,21 +93,29 @@ Rows stream in one page at a time, so they work with every nu table command,
 and `| first n` stops reading early:
 
 ```nu
-stardust query $db {find: ['?name' '?age'] where: [['?e' name '?name'] ['?e' age '?age']]}
+stardust query $db {find: [?name ?age] where: [[?e name ?name] [?e age ?age]]}
 | where age > 30
 | sort-by age
 ```
 
-Quote Stardust's `?variables` in nu lists.
+Or let Stardust filter and sort, which can use its indexes:
+
+```nu
+stardust query $db '{
+  find    [?name ?age]
+  where   [[?e name ?name] [?e age ?age] [> ?age 30]]
+  orderBy [?age]
+}'
+```
 
 ### Stored definitions
 
 ```nu
-stardust define $db queries people/by_age {
-    find: ['?name']
-    parameters: {min: 18}
-    where: [['?e' name '?name'] ['?e' age '?age'] ['>=' '?age' '?min']]
-}
+stardust define $db queries people/by_age '{
+  find       [?name]
+  parameters {min 18}
+  where      [[?e name ?name] [?e age ?age] [>= ?age ?min]]
+}'
 
 stardust query $db people/by_age --params {min: 40}
 stardust definitions $db queries                 # => [people/by_age]
@@ -99,7 +126,7 @@ stardust define $db queries people/by_age null   # delete
 ### Mutations
 
 ```nu
-stardust mutate $db {query: {find: ['?e'] where: [['?e' name Ada]]} patch: {'?e': {age: 37}}}
+stardust mutate $db '{query {find [?e] where [[?e name Ada]]} patch {?e {age 37}}}'
 # => committed, then no_change if you run it again
 ```
 
@@ -122,7 +149,7 @@ let sub = job spawn {
 }
 
 job recv --tag 7                    # the current result
-{'#_dee': {name: Dee age: 52}} | stardust patch $db
+'{#_dee {name Dee age 52}}' | stardust patch $db
 job recv --tag 7 --timeout 5sec     # the result after that commit
 
 job kill $sub
@@ -132,7 +159,7 @@ job kill $sub
 
 ```nu
 stardust eval '[* ?n 2]' --input {n: 21}     # => 42 (a string is DUST text)
-stardust eval ['+' '?x' 1] --input {x: 41}   # => 42 (or nu data)
+stardust eval [+ ?x 1] --input {x: 41}       # => 42 (or nu data)
 ```
 
 ### Formats
@@ -219,7 +246,7 @@ values, including a subscription receiving a commit from a background job:
 ```nu
 nu smoke.nu
 # eval: ok, patch: ok, query: ok, mutate: committed then no_change,
-# definitions: ok, subscribe: ok, time: ok, formats: ok, plugins: ok, all ok
+# definitions: ok, documents: ok, subscribe: ok, time: ok, formats: ok, plugins: ok, all ok
 ```
 
 ## Layout
