@@ -69,7 +69,29 @@ def main [] {
     assert equal ({'#utc': '2026-10-07T12:34:56Z'} | to dust | from dust) $when
     print "time: ok"
 
+    # formats: each round-trips nu values; tron is binary
+    let v = {a: 1, b: [x 2.5 null true], c: {d: hi}, at: $when}
+    assert equal ($v | to dust | from dust) $v
+    assert equal ($v | to edn | from edn) $v
+    assert equal ($v | to tron | describe) binary
+    assert equal ($v | to tron | from tron) $v
+    $v | save $"($dir)/v.edn"
+    $v | save $"($dir)/v.tron"
+    assert equal (open $"($dir)/v.edn") $v
+    assert equal (open $"($dir)/v.tron") $v
+    print "formats: ok"
+
     stardust close $db
+
+    # plugins: listed without a database, called on one that enables them
+    assert ("reactors" in (stardust plugins).name)
+    let rdb = stardust open $"($dir)/reactors.db" --plugins {reactors: {}}
+    assert equal (stardust plugin-call $rdb reactors status).enabled true
+    stardust plugin-call $rdb reactors sync {maxWait: 1sec}
+    assert error { stardust plugin-call $rdb backups status }
+    stardust close $rdb
+    print "plugins: ok"
+
     rm -rf $dir
     print "all ok"
 }

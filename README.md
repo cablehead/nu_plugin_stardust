@@ -128,14 +128,37 @@ job recv --tag 7 --timeout 5sec     # the result after that commit
 job kill $sub
 ```
 
-### Expressions and DUST
+### Expressions
 
 ```nu
 stardust eval '[* ?n 2]' --input {n: 21}     # => 42 (a string is DUST text)
 stardust eval ['+' '?x' 1] --input {x: 41}   # => 42 (or nu data)
+```
 
-open people.dust                              # `from dust` makes this work
-{a: 1 b: [x y]} | to dust
+### Formats
+
+`from` and `to` for Stardust's DUST, EDN and TRON. DUST and EDN are text
+(`--width` wraps lines); TRON is binary. `open` and `save` use them by file
+extension.
+
+```nu
+open people.dust
+{a: 1 b: [x y]} | to edn                # EDN text
+{a: 1} | save data.tron                 # `save` runs `to tron`
+open data.tron                          # => {a: 1}
+```
+
+### Stardust plugins
+
+Stardust's own plugins (reactors, backups, objects, ...) are off unless
+named at open.
+
+```nu
+stardust plugins | select name description
+
+let db = stardust open ~/people.db --plugins {reactors: {}}
+stardust plugin-call $db reactors status
+stardust plugin-call $db reactors sync {maxWait: 5sec}
 ```
 
 ### Values
@@ -196,7 +219,7 @@ values, including a subscription receiving a commit from a background job:
 ```nu
 nu smoke.nu
 # eval: ok, patch: ok, query: ok, mutate: committed then no_change,
-# definitions: ok, subscribe: ok, time: ok, all ok
+# definitions: ok, subscribe: ok, time: ok, formats: ok, plugins: ok, all ok
 ```
 
 ## Layout

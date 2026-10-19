@@ -17,7 +17,7 @@ use crate::convert::{from_document, from_sd, sd_err, to_document};
 use crate::plugin::{DbHandle, StardustPlugin};
 
 pub fn all() -> Vec<Box<dyn PluginCommand<Plugin = StardustPlugin>>> {
-    vec![
+    let mut commands: Vec<Box<dyn PluginCommand<Plugin = StardustPlugin>>> = vec![
         Box::new(Main),
         Box::new(Open),
         Box::new(Close),
@@ -30,9 +30,11 @@ pub fn all() -> Vec<Box<dyn PluginCommand<Plugin = StardustPlugin>>> {
         Box::new(Definitions),
         Box::new(Eval),
         Box::new(License),
-        Box::new(FromDust),
-        Box::new(ToDust),
-    ]
+        Box::new(Plugins),
+        Box::new(PluginCall),
+    ];
+    commands.extend(formats());
+    commands
 }
 
 /// Declares a command struct with its signature builder.
@@ -659,52 +661,172 @@ impl SimplePluginCommand for License {
     }
 }
 
-// ---------------------------------------------------------------- formats
+// ---------------------------------------------------------------- plugins
 
-simple!(FromDust, "from dust", |s: Signature| s.input_output_type(Type::String, Type::Any));
-impl SimplePluginCommand for FromDust {
+simple!(Plugins, "stardust plugins", |s: Signature| s.input_output_type(Type::Nothing, Type::table()));
+impl SimplePluginCommand for Plugins {
     type Plugin = StardustPlugin;
     fn name(&self) -> &str {
-        "from dust"
+        "stardust plugins"
     }
     fn description(&self) -> &str {
-        "Parse DUST text into structured data. Lets `open file.dust` work."
+        "List the Stardust plugins this build can load."
+    }
+    fn extra_description(&self) -> &str {
+        "Enable them by name with `stardust open --plugins {name: {}}`. A plugin library that cannot be used is listed with `unavailable`, the reason."
     }
     fn signature(&self) -> Signature {
         Self::sig()
     }
-    fn run(&self, plugin: &StardustPlugin, engine: &EngineInterface, call: &EvaluatedCall, input: &Value) -> Result<Value, LabeledError> {
-        plugin.ensure_licensed(engine, call.head)?;
-        let span = input.span();
-        let text = input.as_str()?;
-        let doc = stardust::parse(text, Format::DUST).map_err(|e| sd_err(e, span))?;
+    fn examples(&self) -> Vec<Example<'_>> {
+        vec![Example { example: "stardust plugins | select name description", description: "What each plugin does", result: None }]
+    }
+    fn run(&self, _: &StardustPlugin, _: &EngineInterface, call: &EvaluatedCall, _: &Value) -> Result<Value, LabeledError> {
+        // Plugin inspection needs no license.
+        let doc = stardust::plugins().map_err(|e| sd_err(e, call.head))?;
         from_document(&doc, call.head)
     }
 }
 
-simple!(ToDust, "to dust", |s: Signature| {
-    s.input_output_type(Type::Any, Type::String)
-        .named("width", SyntaxShape::Int, "Wrap lines at this width (0: the default).", Some('w'))
+simple!(PluginCall, "stardust plugin-call", |s: Signature| {
+    db_arg(s.input_output_type(Type::Nothing, Type::Any))
+        .required("plugin", SyntaxShape::String, "An enabled plugin, e.g. reactors.")
+        .required("operation", SyntaxShape::String, "The operation, e.g. status or sync.")
+        .optional("request", SyntaxShape::Any, "The operation's request, if it takes one.")
 });
-impl SimplePluginCommand for ToDust {
+impl SimplePluginCommand for PluginCall {
     type Plugin = StardustPlugin;
     fn name(&self) -> &str {
-        "to dust"
+        "stardust plugin-call"
     }
     fn description(&self) -> &str {
-        "Format structured data as DUST text."
+        "Call an operation of a plugin the database enables."
+    }
+    fn extra_description(&self) -> &str {
+        "Plugins conventionally have status, and sync to wait for committed work. sync takes an optional {maxWait: <duration>} and checks once without it. Stream operations are not supported."
     }
     fn signature(&self) -> Signature {
         Self::sig()
     }
+    fn examples(&self) -> Vec<Example<'_>> {
+        vec![
+            Example {
+                example: "let db = stardust open people.db --plugins {reactors: {}}; stardust plugin-call $db reactors status",
+                description: "The reactor runtime's status",
+                result: None,
+            },
+            Example {
+                example: "stardust plugin-call $db reactors sync {maxWait: 5sec}",
+                description: "Wait up to 5 seconds for live mutations to catch up",
+                result: None,
+            },
+        ]
+    }
+    fn run(&self, plugin: &StardustPlugin, _: &EngineInterface, call: &EvaluatedCall, _: &Value) -> Result<Value, LabeledError> {
+        let db = plugin.db(call, 0)?;
+        let name: String = call.req(1)?;
+        let operation: String = call.req(2)?;
+        let request = call.opt::<Value>(3)?.map(|v| to_document(&v)).transpose()?;
+        let result = db
+            .plugin_call(&name, &operation, request.as_ref())
+            .map_err(|e| sd_err(e, call.head))?;
+        from_document(&result, call.head)
+    }
+}
+
+// ---------------------------------------------------------------- formats
+
+/// `from <format>` for the formats Stardust parses. `open file.<ext>` uses it.
+pub struct FromFormat {
+    name: &'static str,
+    format: Format,
+    label: &'static str,
+}
+
+impl SimplePluginCommand for FromFormat {
+    type Plugin = StardustPlugin;
+    fn name(&self) -> &str {
+        self.name
+    }
+    fn description(&self) -> &str {
+        match self.label {
+            "DUST" => "Convert DUST text into structured data.",
+            "EDN" => "Convert EDN text into structured data.",
+            _ => "Convert TRON data into structured data.",
+        }
+    }
+    fn signature(&self) -> Signature {
+        let input = if self.format == Format::TRON { Type::Binary } else { Type::String };
+        Signature::build(self.name).input_output_type(input, Type::Any).category(Category::Formats)
+    }
     fn run(&self, plugin: &StardustPlugin, engine: &EngineInterface, call: &EvaluatedCall, input: &Value) -> Result<Value, LabeledError> {
         plugin.ensure_licensed(engine, call.head)?;
-        let width = call.get_flag::<i64>("width")?.unwrap_or(0);
+        let span = input.span();
+        let doc = match input {
+            Value::String { val, .. } => stardust::parse(val, self.format),
+            Value::Binary { val, .. } => stardust::parse(val, self.format),
+            other => {
+                return Err(LabeledError::new(format!("expected {} input", if self.format == Format::TRON { "binary" } else { "string" }))
+                    .with_label(format!("got {}", other.get_type()), span));
+            }
+        }
+        .map_err(|e| sd_err(e, span))?;
+        from_document(&doc, call.head)
+    }
+}
+
+/// `to <format>` for the formats Stardust writes.
+pub struct ToFormat {
+    name: &'static str,
+    format: Format,
+    label: &'static str,
+}
+
+impl SimplePluginCommand for ToFormat {
+    type Plugin = StardustPlugin;
+    fn name(&self) -> &str {
+        self.name
+    }
+    fn description(&self) -> &str {
+        match self.label {
+            "DUST" => "Convert Nu values into DUST text.",
+            "EDN" => "Convert Nu values into EDN text.",
+            _ => "Convert Nu values into TRON.",
+        }
+    }
+    fn signature(&self) -> Signature {
+        let sig = Signature::build(self.name).category(Category::Formats);
+        if self.format == Format::TRON {
+            sig.input_output_type(Type::Any, Type::Binary)
+        } else {
+            sig.input_output_type(Type::Any, Type::String)
+                .named("width", SyntaxShape::Int, "Wrap lines at this width (0: the default).", Some('w'))
+        }
+    }
+    fn run(&self, plugin: &StardustPlugin, engine: &EngineInterface, call: &EvaluatedCall, input: &Value) -> Result<Value, LabeledError> {
+        plugin.ensure_licensed(engine, call.head)?;
+        let width = if self.format == Format::TRON { 0 } else { call.get_flag::<i64>("width")?.unwrap_or(0) };
         let bytes = to_document(input)?
-            .serialize(Format::DUST, width)
+            .serialize(self.format, width)
             .map_err(|e| sd_err(e, call.head))?;
+        if self.format == Format::TRON {
+            return Ok(Value::binary(bytes, call.head));
+        }
         let text = String::from_utf8(bytes)
             .map_err(|e| LabeledError::new("invalid UTF-8 from serializer").with_label(e.to_string(), call.head))?;
         Ok(Value::string(text, call.head))
     }
+}
+
+fn formats() -> Vec<Box<dyn PluginCommand<Plugin = StardustPlugin>>> {
+    let mut commands: Vec<Box<dyn PluginCommand<Plugin = StardustPlugin>>> = Vec::new();
+    for (from, to, format, label) in [
+        ("from dust", "to dust", Format::DUST, "DUST"),
+        ("from edn", "to edn", Format::EDN, "EDN"),
+        ("from tron", "to tron", Format::TRON, "TRON"),
+    ] {
+        commands.push(Box::new(FromFormat { name: from, format, label }));
+        commands.push(Box::new(ToFormat { name: to, format, label }));
+    }
+    commands
 }
