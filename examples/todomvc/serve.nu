@@ -83,12 +83,21 @@ stardust define $db mutations todos/set-all '{
   patch {?e {completed ?completed}}
 }' | ignore
 
+# Run action on the input, unless it's empty.
+def and-then [action: closure] {
+  if ($in | is-not-empty) {
+    $in | do $action
+  }
+}
+
 # A route test for METHOD /7. Stardust refers to entity 7 as {#link: 7},
 # so that's what goes in ctx.id for the queries and mutations above.
 def todo [method: string] {
   {|req|
     if $req.method == $method {
-      try { {id: {'#link': ($req | path-matches "/:id" | get id | into int)}} }
+      $req | path-matches "/:id" | and-then {
+        try { {id: {'#link': ($in.id | into int)}} }
+      }
     }
   }
 }
