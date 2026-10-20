@@ -19,9 +19,9 @@ list itself, so the reducer is gone:
   `#todos-section` and is sent as a `datastar-patch-elements` event.
 
 ```
-browser --POST--> route --stardust patch--> todos.db
-                                               | stardust subscribe
-browser <--SSE--- .mj render <--result---------+
+browser --POST/PATCH/DELETE--> route --patch or mutate--> todos.db
+                                                            | stardust subscribe
+browser <--SSE---------------- .mj render <--result---------+
 ```
 
 The metrics panel shows the transaction that produced the current result and
@@ -80,12 +80,18 @@ harmless. The page sends the opposite of the state it rendered.
   isn't a todo.
 - `mutations todos/set-all`: sets `completed` on every todo that differs.
 
+A `null` parameter default makes `?id` required. `?completed` can't default
+to `null`: a mutation's patch is checked with its defaults filled in, and
+`{completed null}` would delete the field. The routes require it instead.
+
 Each definition selects todos with `[schema todo ?e]`, so a mutation that
-would leave a todo off-schema is refused (`schema_violation`, a 500: the page only
-sends booleans). Plain
-patches aren't schema-checked: adding a todo is a patch, since a mutation
-can't create an entity, and neither can delete one, so deletes are patches
-too.
+would leave a todo off-schema is refused with `schema_violation`, a 500. The
+page only sends booleans, so only a hand-made request gets one.
+
+Plain patches aren't schema-checked, and two writes have to be patches:
+adding a todo, because a mutation can't create an entity, and deleting, because
+a mutation can't delete one. `serve.nu` checks the text before adding, and
+checks the id is a todo (`todos/get`) before deleting.
 
 ## Notes
 

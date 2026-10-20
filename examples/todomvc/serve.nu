@@ -26,7 +26,7 @@ use http-nu/datastar *
 const here = path self .
 let state = $env.CROSS_STREAM_SITE_STATE? | default $here
 
-# The plugin reads $env.STARDUST_LICENSE; load it from state/ if it's there.
+# The plugin reads $env.STARDUST_LICENSE; load it from $state if it's there.
 let license = $state | path join stardust.license
 if $env.STARDUST_LICENSE? == null and ($license | path exists) {
   $env.STARDUST_LICENSE = open $license | str trim
@@ -43,6 +43,10 @@ stardust define $db schemas todo '{
   additionalProperties false
 }' | ignore
 
+# A null parameter default makes it required. completed can't be null:
+# a mutation's patch is checked with the defaults filled in, and
+# {completed null} would delete the field.
+
 # The read model every viewer sees: all todos, oldest first.
 stardust define $db queries todos/list '{
   find    [?e ?text ?completed]
@@ -52,7 +56,7 @@ stardust define $db queries todos/list '{
 
 # The todo ?id, or nothing if ?id isn't a todo.
 stardust define $db queries todos/get '{
-  parameters {id 0}
+  parameters {id null}
   find       [?e]
   where      [[schema todo ?e] [= ?e ?id]]
 }' | ignore
@@ -66,7 +70,7 @@ stardust define $db queries todos/completed '{
 # Set the todo ?id's completed flag. no_match if ?id isn't a todo.
 stardust define $db mutations todos/set '{
   query {
-    parameters {id 0 completed true}
+    parameters {id null completed true}
     find       [?e]
     where      [[schema todo ?e] [= ?e ?id]]
   }
@@ -82,6 +86,12 @@ stardust define $db mutations todos/set-all '{
   }
   patch {?e {completed ?completed}}
 }' | ignore
+
+def set-status [code: int] {
+  metadata set { merge {'http.response': {status: $code}} }
+}
+
+def not-found [] { "Not Found" | set-status 404 }
 
 # Run action on the input, unless it's empty.
 def and-then [action: closure] {
@@ -104,35 +114,34 @@ def match-id-route [method: string] {
   }
 }
 
-let index = .mj compile ($here | path join templates/index.html)
-let section = .mj compile ($here | path join templates/todos.html)
-
-def set-status [code: int] {
-  metadata set { merge {'http.response': {status: $code}} }
+# A patch that deletes each linked entity: [{#link: 7}] -> {"7": null}.
+def delete-patch []: list -> record {
+  each { {($in.'#link' | into string): null} } | into record
 }
 
-def not-found [] { "Not Found" | set-status 404 }
-
-# Rows from todos/list, as the template's view model.
-def view [event: record] {
-  let todos = $event.result | each {|row|
-    {id: $row.e.'#link' text: $row.text completed: $row.completed}
-  }
-  {
-    todos: $todos
-    active_count: ($todos | where not completed | length)
-    completed_count: ($todos | where completed | length)
+# A todos/list event, as templates/todos.html's context.
+def section-context []: record -> record {
+  let event = $in
+  $event.result
+  | each {|row| {id: $row.e.'#link' text: $row.text completed: $row.completed} }
+  | {
+    todos: $in
+    active_count: ($in | where not completed | length)
+    completed_count: ($in | where completed | length)
     transaction: $event.transaction
     sequence: $event.sequence
   }
 }
+
+let index = .mj compile ($here | path join templates/index.html)
+let section = .mj compile ($here | path join templates/todos.html)
 
 {|req|
   dispatch $req [
     (
       route {method: GET path: "/sse"} {|req ctx|
         stardust subscribe $db todos/list
-        | each {|event| view $event | .mj render $section | to datastar-patch-elements }
+        | each { section-context | .mj render $section | to datastar-patch-elements }
         | to sse
       }
     )
@@ -171,21 +180,22 @@ def view [event: record] {
     (
       route {method: DELETE path: "/completed"} {|req ctx|
         stardust query $db todos/completed
-        | each { {($in.e.'#link' | into string): null} }
-        | into record
+        | get e
+        | delete-patch
         | stardust patch $db
         | ignore
       }
     )
 
-    # A patch, not a mutation: mutations can't delete.
+    # Mutations can't delete, so this is a check, then a patch, in two steps.
+    # Deleting a todo that another request deleted in between is harmless.
     (
       route (match-id-route DELETE) {|req ctx|
         stardust query $db todos/get --params {id: $ctx.id}
         | if ($in | is-empty) {
           not-found
         } else {
-          {($ctx.id.'#link' | into string): null} | stardust patch $db | ignore
+          get e | delete-patch | stardust patch $db | ignore
         }
       }
     )
@@ -196,17 +206,12 @@ def view [event: record] {
         # X-Forwarded-Proto can't be trusted for this: behind a chain of
         # proxies the last hop may be plain http.
         let host = $req.headers.host
-        let local = $host =~ '^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$'
-        let scheme = if $local { "http" } else { "https" }
+        let scheme = if $host =~ '^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$' { "http" } else { "https" }
         {datastar: $DATASTAR_JS_PATH url: $"($scheme)://($host)/"} | .mj render $index
       }
     )
 
-    (
-      route {|req| if $req.method == "GET" and ($req.path | str starts-with "/static/") { {} } } {|req ctx|
-        .static $here $req.path
-      }
-    )
+    (route {method: GET path-matches: "/static/:file"} {|req ctx| .static $here $req.path })
 
     (route true {|req ctx| not-found })
   ]
