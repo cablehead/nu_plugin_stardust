@@ -1,5 +1,6 @@
 {#- Rendered from a todos/list subscription event: result is its rows,
-    {e: {"#link": 7}, text, completed}. -#}
+    {e: {"#link": 7}, text, completed}. live is false for a past
+    transaction, which renders read-only. -#}
 {%- set active_count = result | rejectattr("completed") | list | length %}
 {%- set completed_count = result | selectattr("completed") | list | length %}
 {%- set all_done = result | length > 0 and active_count == 0 %}
@@ -8,7 +9,11 @@
   <input
     type="checkbox"
     data-init="el.checked = {{ all_done | lower }}"
+    {% if live -%}
     data-on:click__prevent="@patch('/', {payload: {completed: {{ (not all_done) | lower }}}})"
+    {%- else -%}
+    disabled
+    {%- endif %}
   />
   Toggle All
 </label>
@@ -21,18 +26,24 @@
         <input
           type="checkbox"
           data-init="el.checked = {{ todo.completed | lower }}"
+          {% if live -%}
           data-on:click__prevent="@patch('/{{ id }}', {payload: {completed: {{ (not todo.completed) | lower }}}})"
+          {%- else -%}
+          disabled
+          {%- endif %}
         />
         {{ todo.text }}
       </label>
+      {% if live %}
       <button type="button" data-on:click="@delete('/{{ id }}')">
         Delete
       </button>
+      {% endif %}
     </li>
     {% endfor %}
   </ul>
   {% else %}
-  <p>No todos yet. Add one above!</p>
+  <p>{% if live %}No todos yet. Add one above!{% else %}No todos at this transaction.{% endif %}</p>
   {% endif %}
 
   <footer>
@@ -40,7 +51,7 @@
       <strong>{{ active_count }}</strong> {% if active_count == 1 %}item{% else
       %}items{% endif %} pending
     </p>
-    {% if completed_count > 0 %}
+    {% if live and completed_count > 0 %}
     <button type="button" data-on:click="@delete('/completed')">
       Clear {{ completed_count }} completed {% if completed_count == 1 %}item{%
       else %}items{% endif %}
@@ -54,7 +65,7 @@
     </div>
     <div class="tracker-panel">
       <div class="tracker-label">SUBSCRIPTION EVENT</div>
-      <div class="tracker-value">{{ sequence }}</div>
+      <div class="tracker-value">{% if live %}{{ sequence }}{% else %}-{% endif %}</div>
     </div>
   </div>
 </section>

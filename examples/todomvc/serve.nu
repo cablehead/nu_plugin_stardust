@@ -54,6 +54,15 @@ stardust define $db queries todos/list '{
   orderBy [?e]
 }' | ignore
 
+# todos/list as it was at transaction ?at, for time travel.
+stardust define $db queries todos/list-at '{
+  parameters {at null}
+  find       [?e ?text ?completed]
+  where      [[schema todo ?e] [?e text ?text] [?e completed ?completed]]
+  orderBy    [?e]
+  bind       {with {db {asOf ?at}}}
+}' | ignore
+
 # The todo ?id, or nothing if ?id isn't a todo.
 stardust define $db queries todos/get '{
   parameters {id null}
@@ -125,9 +134,29 @@ let section = .mj compile ($here | path join templates/todos.html)
 {|req|
   dispatch $req [
     (
+      # $at 0 is now: stream every change, and keep the slider's $latest
+      # current. Any other $at renders that transaction once, read-only.
       route {method: GET path: "/sse"} {|req ctx|
-        stardust subscribe $db todos/list
-        | each { .mj render $section | to datastar-patch-elements }
+        from datastar-signals $req
+        | get at? | default 0
+        | if $in == 0 {
+          stardust subscribe $db todos/list
+          | each {|event|
+            [
+              ($event | insert live true | .mj render $section | to datastar-patch-elements)
+              ({latest: $event.transaction} | to datastar-patch-signals)
+            ]
+          }
+          | flatten
+        } else {
+          {
+            result: (stardust query $db todos/list-at --params {at: $in})
+            transaction: $in
+            live: false
+          }
+          | .mj render $section
+          | to datastar-patch-elements
+        }
         | to sse
       }
     )

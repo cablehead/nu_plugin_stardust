@@ -81,12 +81,26 @@
         <input
           type="text"
           placeholder="What needs to be done?"
+          data-attr:disabled="$at != 0"
           data-bind:input
           data-on:keydown="
             evt.key === 'Enter' && $input.trim() && @post('/') && ($input = '');
           "
         />
       </header>
+
+      <!-- Time travel. $at is the transaction shown, 0 for now (live). $latest
+           is the transaction of the newest list, sent with each live update. -->
+      <div class="time-travel" data-signals="{at: 0, latest: 1}">
+        <input
+          type="range"
+          min="1"
+          data-attr:max="$latest"
+          data-effect="if ($at == 0) el.value = $latest"
+          data-on:input__debounce.80ms="$at = +el.value >= $latest ? 0 : +el.value; @get('/sse')"
+        />
+        <span data-text="$at == 0 ? 'now' : 'transaction ' + $at + ' (read-only)'">now</span>
+      </div>
 
       <section id="todos-section" data-init="@get('/sse')">
         <!-- Dynamic todo list and footer will be rendered here -->

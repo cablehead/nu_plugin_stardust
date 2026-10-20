@@ -29,6 +29,11 @@ browser <--SSE---------------- .mj render <--result---------+
 The metrics panel shows the transaction that produced the current result and
 the subscription's event count.
 
+The slider travels back through transactions. Anywhere left of the right
+edge, the page shows the list as it was (`todos/list-at`, a query with
+`bind {with {db {asOf ?at}}}`) and is read-only: an edit made while viewing
+the past would land on the present. Back at the right edge, it's live again.
+
 ## Requirements
 
 - http-nu 0.18 (embeds nu 0.116, Datastar 1.0.4 with `--datastar`, and
@@ -57,7 +62,8 @@ holds it, and Stardust refuses with `locked`.
 ## API
 
 - `GET /` - the page
-- `GET /sse` - SSE stream of the todo section
+- `GET /sse` - SSE stream of the todo section. With the signal `at` set to a
+  transaction, it renders that transaction once, read-only, and ends.
 - `POST /` - add a todo (Datastar signals `{"input": "text"}`)
 - `PATCH /` - set every todo's flag (`{"completed": true}`)
 - `PATCH /{id}` - set one todo's flag (`{"completed": true}`)
@@ -76,6 +82,7 @@ harmless. The page sends the opposite of the state it rendered.
 - `schemas todo`: `{text, completed}`, a non-empty string and a boolean,
   nothing else.
 - `queries todos/list`: every todo, oldest first. Viewers subscribe to it.
+- `queries todos/list-at`: the same, as of transaction `?at`.
 - `queries todos/get`: one todo, by `?id`. Delete checks it.
 - `queries todos/completed`: the completed todos. Clear-completed reads it.
 - `mutations todos/set`: sets one todo's `completed`. `no_match` means the id

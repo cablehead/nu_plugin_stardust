@@ -78,6 +78,25 @@ header input[type="text"]::placeholder {
   color: var(--text-muted);
 }
 
+.time-travel {
+  display: flex;
+  align-items: center;
+  gap: 1em;
+  margin-bottom: 1em;
+  color: var(--text-secondary);
+  font-size: 0.85em;
+}
+
+.time-travel input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.time-travel span {
+  min-width: 14em;
+  text-align: right;
+}
+
 section {
   background: var(--bg-secondary);
   border: 2px solid var(--border);
