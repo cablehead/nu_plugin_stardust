@@ -87,8 +87,8 @@ stardust define $db mutations todos/set-all '{
 # so that's what goes in ctx.id for the queries and mutations above.
 def todo [method: string] {
   {|req|
-    if $req.method == $method and $req.path =~ '^/\d+$' {
-      {id: {'#link': ($req.path | str substring 1.. | into int)}}
+    if $req.method == $method {
+      try { {id: {'#link': ($req | path-matches "/:id" | get id | into int)}} }
     }
   }
 }
@@ -129,7 +129,7 @@ def view [event: record] {
     (
       route {method: POST path: "/"} {|req ctx|
         from datastar-signals $req
-        | get -o input | default "" | str trim
+        | get input? | default "" | str trim
         | if ($in | is-empty) {
           "Empty todo text" | set-status 400
         } else {
