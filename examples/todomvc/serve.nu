@@ -90,9 +90,10 @@ def and-then [action: closure] {
   }
 }
 
-# A route test for METHOD /7. Stardust refers to entity 7 as {#link: 7},
-# so that's what goes in ctx.id for the queries and mutations above.
-def todo [method: string] {
+# A route test for METHOD /7, matching any numeric id; whether 7 is a todo
+# is up to the handler. Stardust refers to entity 7 as {#link: 7}, so that's
+# what goes in ctx.id for the queries and mutations above.
+def match-id-route [method: string] {
   {|req|
     if $req.method == $method {
       $req
@@ -159,7 +160,7 @@ def view [event: record] {
     )
 
     (
-      route (todo PATCH) {|req ctx|
+      route (match-id-route PATCH) {|req ctx|
         from datastar-signals $req
         | {id: $ctx.id completed: $in.completed}
         | stardust mutate $db todos/set --params $in
@@ -179,7 +180,7 @@ def view [event: record] {
 
     # A patch, not a mutation: mutations can't delete.
     (
-      route (todo DELETE) {|req ctx|
+      route (match-id-route DELETE) {|req ctx|
         stardust query $db todos/get --params {id: $ctx.id}
         | if ($in | is-empty) {
           not-found
