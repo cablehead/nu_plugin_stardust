@@ -158,7 +158,8 @@ let section = .mj compile ($here | path join templates/todos.html)
       }
     )
 
-    # The body is the state to set, {completed: true}, so a repeat is harmless.
+    # The body is the state to set, {completed: true}, not a toggle. A request
+    # that arrives twice (a double click, a retry) ends in the same state.
     (
       route {method: PATCH path: "/"} {|req ctx|
         from datastar-signals $req
