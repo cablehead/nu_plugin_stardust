@@ -81,7 +81,8 @@ harmless. The page sends the opposite of the state it rendered.
 - `mutations todos/set-all`: sets `completed` on every todo that differs.
 
 Each definition selects todos with `[schema todo ?e]`, so a mutation that
-would leave a todo off-schema is refused (`schema_violation`, a 500: the page only sends booleans). Plain
+would leave a todo off-schema is refused (`schema_violation`, a 500: the page only
+sends booleans). Plain
 patches aren't schema-checked: adding a todo is a patch, since a mutation
 can't create an entity, and neither can delete one, so deletes are patches
 too.

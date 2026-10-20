@@ -96,11 +96,11 @@ def todo [method: string] {
 let index = .mj compile ($here | path join templates/index.html)
 let section = .mj compile ($here | path join templates/todos.html)
 
-def status [code: int] {
+def set-status [code: int] {
   metadata set { merge {'http.response': {status: $code}} }
 }
 
-def not-found [] { "Not Found" | status 404 }
+def not-found [] { "Not Found" | set-status 404 }
 
 # Rows from todos/list, as the template's view model.
 def view [event: record] {
@@ -131,7 +131,7 @@ def view [event: record] {
         from datastar-signals $req
         | get -o input | default "" | str trim
         | if ($in | is-empty) {
-          "Empty todo text" | status 400
+          "Empty todo text" | set-status 400
         } else {
           {'#_todo': {text: $in completed: false}} | stardust patch $db | ignore
         }
