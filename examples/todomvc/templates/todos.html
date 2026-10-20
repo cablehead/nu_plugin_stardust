@@ -2,6 +2,16 @@
     {e: {"#link": 7}, text, completed}. -#}
 {%- set active_count = result | rejectattr("completed") | list | length %}
 {%- set completed_count = result | selectattr("completed") | list | length %}
+{%- set all_done = result | length > 0 and active_count == 0 %}
+{#- Replaces the header's #toggle-all: checked when every todo is completed. -#}
+<label id="toggle-all">
+  <input
+    type="checkbox"
+    data-init="el.checked = {{ all_done | lower }}"
+    data-on:click__prevent="@patch('/', {payload: {completed: {{ (not all_done) | lower }}}})"
+  />
+  Toggle All
+</label>
 <section id="todos-section">
   {% if result %}
   <ul>

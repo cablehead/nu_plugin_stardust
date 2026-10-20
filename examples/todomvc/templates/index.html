@@ -74,12 +74,8 @@
       </div>
 
       <header>
-        <label>
-          <input
-            type="checkbox"
-            data-on:click__prevent="@patch('/', {payload: {completed: !!document.querySelector('#todos-section li:not([data-completed])')}})"
-            data-init="el.checked = false"
-          />
+        <label id="toggle-all">
+          <input type="checkbox" disabled />
           Toggle All
         </label>
         <input

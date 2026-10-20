@@ -16,7 +16,7 @@ list itself, so the reducer is gone:
 - **Reads.** Each viewer opens `GET /sse`, an SSE stream of
   `stardust subscribe $db todos/list`. Stardust sends the whole result now
   and again after every commit that changes it. Each result renders the
-  `#todos-section` directly from the event (`templates/todos.html` reads its
+  header's `#toggle-all` and the `#todos-section` directly from the event (`templates/todos.html` reads its
   rows, `transaction` and `sequence`) and is sent as a
   `datastar-patch-elements` event.
 
