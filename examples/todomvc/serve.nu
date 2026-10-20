@@ -95,9 +95,10 @@ def and-then [action: closure] {
 def todo [method: string] {
   {|req|
     if $req.method == $method {
-      $req | path-matches "/:id" | and-then {
-        try { {id: {'#link': ($in.id | into int)}} }
-      }
+      $req
+      | path-matches "/:id"
+      | and-then { try { $in.id | into int } }
+      | and-then { {id: {'#link': $in}} }
     }
   }
 }
