@@ -2,13 +2,13 @@
 #
 # How the page stays up to date:
 #
-# - On load, the page opens one connection, GET /todos/updates, and keeps
-#   it open. The server sends the whole todo section down it straight away,
-#   then again every time the todo list changes in the database. Datastar
-#   swaps each copy into the page, changing only what differs.
+# - On load, the page opens one connection, GET /sse, and keeps it open.
+#   The server sends the whole todo section down it straight away, then
+#   again every time the todo list changes in the database. Datastar swaps
+#   each copy into the page, changing only what differs.
 #
-# - Each click is a separate, short request: POST /todos/add,
-#   DELETE /todos/{id}, and so on. It changes the database and returns
+# - Each click is a separate, short request: POST /, PATCH /{id},
+#   DELETE /{id}, and so on. It changes the database and returns
 #   204, with no HTML. The page doesn't update from that response; it
 #   updates when the change arrives over the open connection, the same
 #   way it does in every other tab viewing the list.
@@ -34,42 +34,68 @@ if $env.STARDUST_LICENSE? == null and ($license | path exists) {
 
 let db = stardust open ($state | path join todos.db)
 
+# A todo is exactly these two fields. Queries select todos with
+# [schema todo ?e], and mutations that do are checked against it.
+stardust define $db schemas todo '{
+  type                 object
+  properties           {text {type string minLength 1} completed {type boolean}}
+  required             [text completed]
+  additionalProperties false
+}' | ignore
+
 # The read model every viewer sees: all todos, oldest first.
 stardust define $db queries todos/list '{
   find    [?e ?text ?completed]
-  where   [[?e text ?text] [?e completed ?completed]]
+  where   [[schema todo ?e] [?e text ?text] [?e completed ?completed]]
   orderBy [?e]
 }' | ignore
 
-# One todo's completed flag. ?id is a link: {#link 7}.
-stardust define $db queries todos/completed '{
+# One todo, by ?id, a link: {#link 7}. Empty if ?id isn't a todo.
+stardust define $db queries todos/get '{
   parameters {id 0}
-  find       [?completed]
-  where      [[?e completed ?completed] [= ?e ?id]]
+  find       [?e]
+  where      [[schema todo ?e] [= ?e ?id]]
 }' | ignore
 
-# Set completed on every todo that isn't already ?done.
+# The completed todos.
+stardust define $db queries todos/completed '{
+  find  [?e]
+  where [[schema todo ?e] [?e completed true]]
+}' | ignore
+
+# Set one todo's completed flag. no_match if ?id isn't a todo.
+stardust define $db mutations todos/set '{
+  query {
+    parameters {id 0 completed true}
+    find       [?e]
+    where      [[schema todo ?e] [= ?e ?id]]
+  }
+  patch {?e {completed ?completed}}
+}' | ignore
+
+# Set completed on every todo that isn't already ?completed.
 stardust define $db mutations todos/set-all '{
   query {
-    parameters {done true}
+    parameters {completed true}
     find       [?e]
-    where      [[?e completed ?c] [!= ?c ?done]]
+    where      [[schema todo ?e] [?e completed ?c] [!= ?c ?completed]]
   }
-  patch {?e {completed ?done}}
+  patch {?e {completed ?completed}}
 }' | ignore
 
-# A todo by the id in its URL, or nothing: only todos can be toggled or deleted.
-let find = {|id|
-  let id = try { $id | into int } catch { return null }
-  stardust query $db todos/completed --params {id: {'#link': $id}} | get -o 0
+# A todo id from the URL, as a link, or null if it isn't a number.
+def link [id: string] {
+  try { {'#link': ($id | into int)} } catch { null }
 }
 
 let index = .mj compile ($here | path join templates/index.html)
 let section = .mj compile ($here | path join templates/todos.html)
 
-def not-found [] {
-  "Not Found" | metadata set { merge {'http.response': {status: 404}} }
+def status [code: int] {
+  metadata set { merge {'http.response': {status: $code}} }
 }
+
+def not-found [] { "Not Found" | status 404 }
 
 # Rows from todos/list, as the template's view model.
 def view [event: record] {
@@ -88,7 +114,7 @@ def view [event: record] {
 {|req|
   dispatch $req [
     (
-      route {method: GET path: "/todos/updates"} {|req ctx|
+      route {method: GET path: "/sse"} {|req ctx|
         stardust subscribe $db todos/list
         | each {|event| view $event | .mj render $section | to datastar-patch-elements }
         | to sse
@@ -96,43 +122,52 @@ def view [event: record] {
     )
 
     (
-      route {method: POST path: "/todos/add"} {|req ctx|
+      route {method: POST path: "/"} {|req ctx|
         let text = $in | from datastar-signals $req | get -o input | default "" | str trim
-        if ($text | is-empty) {
-          return ("Empty todo text" | metadata set { merge {'http.response': {status: 400}} })
-        }
+        if ($text | is-empty) { return ("Empty todo text" | status 400) }
         {'#_todo': {text: $text completed: false}} | stardust patch $db | ignore
       }
     )
 
+    # The body says what to set, {completed: true}, so a repeat is harmless.
     (
-      route {method: POST path: "/todos/toggle-all"} {|req ctx|
-        let rows = stardust query $db todos/list
-        let done = $rows | any {|row| not $row.completed }
-        stardust mutate $db todos/set-all --params {done: $done} | ignore
+      route {method: PATCH path: "/"} {|req ctx|
+        let completed = $in | from datastar-signals $req | get -o completed
+        try {
+          stardust mutate $db todos/set-all --params {completed: $completed} | ignore
+        } catch { "Bad Request" | status 400 }
       }
     )
 
     (
-      route {method: DELETE path: "/todos/completed"} {|req ctx|
-        let ids = stardust query $db '{find [?e] where [[?e completed true]]}' | get e.'#link'
+      route {method: PATCH path-matches: "/:id"} {|req ctx|
+        let id = link $ctx.id
+        if $id == null { return (not-found) }
+        let completed = $in | from datastar-signals $req | get -o completed
+        let result = try {
+          stardust mutate $db todos/set --params {id: $id completed: $completed}
+        } catch { return ("Bad Request" | status 400) }
+        if $result.status == "no_match" { not-found }
+      }
+    )
+
+    # Before /:id, which would also match /completed.
+    (
+      route {method: DELETE path: "/completed"} {|req ctx|
+        let ids = stardust query $db todos/completed | get e.'#link'
         if ($ids | is-not-empty) {
           $ids | reduce --fold {} {|id patch| $patch | insert ($id | into string) null } | stardust patch $db | ignore
         }
       }
     )
 
+    # A patch, not a mutation: mutations can't delete. todos/get keeps it to todos.
     (
-      route {method: POST path-matches: "/todos/:id/toggle"} {|req ctx|
-        let todo = do $find $ctx.id
-        if $todo == null { return (not-found) }
-        {($ctx.id): {completed: (not $todo.completed)}} | stardust patch $db | ignore
-      }
-    )
-
-    (
-      route {method: DELETE path-matches: "/todos/:id"} {|req ctx|
-        if (do $find $ctx.id) == null { return (not-found) }
+      route {method: DELETE path-matches: "/:id"} {|req ctx|
+        let id = link $ctx.id
+        if $id == null or (stardust query $db todos/get --params {id: $id} | is-empty) {
+          return (not-found)
+        }
         {($ctx.id): null} | stardust patch $db | ignore
       }
     )
@@ -149,7 +184,11 @@ def view [event: record] {
       }
     )
 
-    (route {method: GET} {|req ctx| .static ($here | path join www) $req.path })
+    (
+      route {|req| if $req.method == "GET" and ($req.path | str starts-with "/static/") { {} } } {|req ctx|
+        .static $here $req.path
+      }
+    )
 
     (route true {|req ctx| not-found })
   ]

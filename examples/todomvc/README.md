@@ -13,7 +13,7 @@ list itself, so the reducer is gone:
 
 - **Writes.** Each request commits one Stardust patch or mutation and
   returns 204. It renders nothing.
-- **Reads.** Each viewer opens `GET /todos/updates`, an SSE stream of
+- **Reads.** Each viewer opens `GET /sse`, an SSE stream of
   `stardust subscribe $db todos/list`. Stardust sends the whole result now
   and again after every commit that changes it. Each result renders the
   `#todos-section` and is sent as a `datastar-patch-elements` event.
@@ -55,28 +55,36 @@ holds it, and Stardust refuses with `locked`.
 ## API
 
 - `GET /` - the page
-- `GET /todos/updates` - SSE stream of the todo section
-- `POST /todos/add` - add a todo (Datastar signals `{"input": "text"}`)
-- `POST /todos/{id}/toggle` - toggle a todo
-- `POST /todos/toggle-all` - complete all, or reopen all if all are done
-- `DELETE /todos/{id}` - delete a todo
-- `DELETE /todos/completed` - clear completed todos
+- `GET /sse` - SSE stream of the todo section
+- `POST /` - add a todo (Datastar signals `{"input": "text"}`)
+- `PATCH /` - set every todo's flag (`{"completed": true}`)
+- `PATCH /{id}` - set one todo's flag (`{"completed": true}`)
+- `DELETE /{id}` - delete a todo
+- `DELETE /completed` - delete the completed todos
+- `GET /static/*` - files in `static/`
 
-`{id}` is the todo's Stardust entity id. Toggle and delete answer 404 for an
-id that isn't a todo.
+`{id}` is the todo's Stardust entity id; an id that isn't a todo gets 404.
+The PATCH body is the state to set, not a toggle, so repeating a request is
+harmless. The page sends the opposite of the state it rendered.
 
 ## Stored definitions
 
 `serve.nu` defines these at startup:
 
+- `schemas todo`: `{text, completed}`, a non-empty string and a boolean,
+  nothing else.
 - `queries todos/list`: every todo, oldest first. Viewers subscribe to it.
-- `queries todos/completed`: one todo's flag, by `?id`. Toggle reads it.
-- `mutations todos/set-all`: sets `completed ?done` on every todo that
-  differs. Toggle-all runs it.
+- `queries todos/get`: one todo, by `?id`. Delete checks it.
+- `queries todos/completed`: the completed todos. Clear-completed reads it.
+- `mutations todos/set`: sets one todo's `completed`. `no_match` means the id
+  isn't a todo.
+- `mutations todos/set-all`: sets `completed` on every todo that differs.
 
-Mutation patches take literal values and query variables, not expressions,
-and can't delete entities. So toggle reads the flag then patches its
-negation, and clear-completed queries the ids then patches each to `null`.
+Each definition selects todos with `[schema todo ?e]`, so a mutation that
+would leave a todo off-schema is refused (`schema_violation`, a 400). Plain
+patches aren't schema-checked: adding a todo is a patch, since a mutation
+can't create an entity, and neither can delete one, so deletes are patches
+too.
 
 ## Notes
 

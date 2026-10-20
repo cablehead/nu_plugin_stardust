@@ -15,13 +15,13 @@
       property="og:description"
       content="A simple todo app demonstrating Datastar reactivity with http-nu, Nushell, and a Stardust database."
     >
-    <meta property="og:image" content="{{ url }}og.png">
+    <meta property="og:image" content="{{ url }}static/og.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="TodoMVC app built with Datastar and Stardust">
     <meta property="twitter:card" content="summary_large_image">
-    <meta property="twitter:image" content="{{ url }}og.png">
-    <link rel="stylesheet" href="style.css">
+    <meta property="twitter:image" content="{{ url }}static/og.png">
+    <link rel="stylesheet" href="static/style.css">
     <script type="module" src="{{ datastar }}"></script>
   </head>
   <body>
@@ -77,7 +77,7 @@
         <label>
           <input
             type="checkbox"
-            data-on:click__prevent="@post('/todos/toggle-all')"
+            data-on:click__prevent="@patch('/', {payload: {completed: !!document.querySelector('#todos-section li:not([data-completed])')}})"
             data-init="el.checked = false"
           />
           Toggle All
@@ -87,12 +87,12 @@
           placeholder="What needs to be done?"
           data-bind:input
           data-on:keydown="
-            evt.key === 'Enter' && $input.trim() && @post('/todos/add') && ($input = '');
+            evt.key === 'Enter' && $input.trim() && @post('/') && ($input = '');
           "
         />
       </header>
 
-      <section id="todos-section" data-init="@get('/todos/updates')">
+      <section id="todos-section" data-init="@get('/sse')">
         <!-- Dynamic todo list and footer will be rendered here -->
       </section>
     </main>
