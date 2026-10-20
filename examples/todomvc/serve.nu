@@ -119,20 +119,6 @@ def delete-patch []: list -> record {
   each { {($in.'#link' | into string): null} } | into record
 }
 
-# A todos/list event, as templates/todos.html's context.
-def section-context []: record -> record {
-  let event = $in
-  $event.result
-  | each {|row| {id: $row.e.'#link' text: $row.text completed: $row.completed} }
-  | {
-    todos: $in
-    active_count: ($in | where not completed | length)
-    completed_count: ($in | where completed | length)
-    transaction: $event.transaction
-    sequence: $event.sequence
-  }
-}
-
 let index = .mj compile ($here | path join templates/index.html)
 let section = .mj compile ($here | path join templates/todos.html)
 
@@ -141,7 +127,7 @@ let section = .mj compile ($here | path join templates/todos.html)
     (
       route {method: GET path: "/sse"} {|req ctx|
         stardust subscribe $db todos/list
-        | each { section-context | .mj render $section | to datastar-patch-elements }
+        | each { .mj render $section | to datastar-patch-elements }
         | to sse
       }
     )

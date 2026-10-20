@@ -1,17 +1,21 @@
+{#- Rendered from a todos/list subscription event: result is its rows,
+    {e: {"#link": 7}, text, completed}. -#}
+{%- set active_count = result | rejectattr("completed") | list | length %}
+{%- set completed_count = result | selectattr("completed") | list | length %}
 <section id="todos-section">
-  {% if todos %}
+  {% if result %}
   <ul>
-    {% for todo in todos | reverse %}
+    {% for todo in result | reverse %}{% set id = todo.e["#link"] %}
     <li {% if todo.completed %} data-completed="true" {% endif %}>
       <label>
         <input
           type="checkbox"
           data-init="el.checked = {{ todo.completed | lower }}"
-          data-on:click__prevent="@patch('/{{ todo.id }}', {payload: {completed: {{ (not todo.completed) | lower }}}})"
+          data-on:click__prevent="@patch('/{{ id }}', {payload: {completed: {{ (not todo.completed) | lower }}}})"
         />
         {{ todo.text }}
       </label>
-      <button type="button" data-on:click="@delete('/{{ todo.id }}')">
+      <button type="button" data-on:click="@delete('/{{ id }}')">
         Delete
       </button>
     </li>
