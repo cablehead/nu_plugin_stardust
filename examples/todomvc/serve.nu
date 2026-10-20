@@ -50,7 +50,7 @@ stardust define $db queries todos/list '{
   orderBy [?e]
 }' | ignore
 
-# One todo, by ?id, a link: {#link 7}. Empty if ?id isn't a todo.
+# The todo ?id, or nothing if ?id isn't a todo.
 stardust define $db queries todos/get '{
   parameters {id 0}
   find       [?e]
@@ -63,7 +63,7 @@ stardust define $db queries todos/completed '{
   where [[schema todo ?e] [?e completed true]]
 }' | ignore
 
-# Set one todo's completed flag. no_match if ?id isn't a todo.
+# Set the todo ?id's completed flag. no_match if ?id isn't a todo.
 stardust define $db mutations todos/set '{
   query {
     parameters {id 0 completed true}
@@ -83,9 +83,14 @@ stardust define $db mutations todos/set-all '{
   patch {?e {completed ?completed}}
 }' | ignore
 
-# A todo id from the URL, as a link, or null if it isn't a number.
-def link [id: string] {
-  try { {'#link': ($id | into int)} } catch { null }
+# A route test for METHOD /7. Stardust refers to entity 7 as {#link: 7},
+# so that's what goes in ctx.id for the queries and mutations above.
+def todo [method: string] {
+  {|req|
+    if $req.method == $method and $req.path =~ '^/\d+$' {
+      {id: {'#link': ($req.path | str substring 1.. | into int)}}
+    }
+  }
 }
 
 let index = .mj compile ($here | path join templates/index.html)
@@ -123,52 +128,54 @@ def view [event: record] {
 
     (
       route {method: POST path: "/"} {|req ctx|
-        let text = $in | from datastar-signals $req | get -o input | default "" | str trim
-        if ($text | is-empty) { return ("Empty todo text" | status 400) }
-        {'#_todo': {text: $text completed: false}} | stardust patch $db | ignore
+        from datastar-signals $req
+        | get -o input | default "" | str trim
+        | if ($in | is-empty) {
+          "Empty todo text" | status 400
+        } else {
+          {'#_todo': {text: $in completed: false}} | stardust patch $db | ignore
+        }
       }
     )
 
-    # The body says what to set, {completed: true}, so a repeat is harmless.
+    # The body is the state to set, {completed: true}, so a repeat is harmless.
     (
       route {method: PATCH path: "/"} {|req ctx|
-        let completed = $in | from datastar-signals $req | get -o completed
-        try {
-          stardust mutate $db todos/set-all --params {completed: $completed} | ignore
-        } catch { "Bad Request" | status 400 }
+        from datastar-signals $req
+        | select completed
+        | stardust mutate $db todos/set-all --params $in
+        | ignore
       }
     )
 
     (
-      route {method: PATCH path-matches: "/:id"} {|req ctx|
-        let id = link $ctx.id
-        if $id == null { return (not-found) }
-        let completed = $in | from datastar-signals $req | get -o completed
-        let result = try {
-          stardust mutate $db todos/set --params {id: $id completed: $completed}
-        } catch { return ("Bad Request" | status 400) }
-        if $result.status == "no_match" { not-found }
+      route (todo PATCH) {|req ctx|
+        from datastar-signals $req
+        | {id: $ctx.id completed: $in.completed}
+        | stardust mutate $db todos/set --params $in
+        | if $in.status == "no_match" { not-found }
       }
     )
 
-    # Before /:id, which would also match /completed.
     (
       route {method: DELETE path: "/completed"} {|req ctx|
-        let ids = stardust query $db todos/completed | get e.'#link'
-        if ($ids | is-not-empty) {
-          $ids | reduce --fold {} {|id patch| $patch | insert ($id | into string) null } | stardust patch $db | ignore
-        }
+        stardust query $db todos/completed
+        | each { {($in.e.'#link' | into string): null} }
+        | into record
+        | stardust patch $db
+        | ignore
       }
     )
 
-    # A patch, not a mutation: mutations can't delete. todos/get keeps it to todos.
+    # A patch, not a mutation: mutations can't delete.
     (
-      route {method: DELETE path-matches: "/:id"} {|req ctx|
-        let id = link $ctx.id
-        if $id == null or (stardust query $db todos/get --params {id: $id} | is-empty) {
-          return (not-found)
+      route (todo DELETE) {|req ctx|
+        stardust query $db todos/get --params {id: $ctx.id}
+        | if ($in | is-empty) {
+          not-found
+        } else {
+          {($ctx.id.'#link' | into string): null} | stardust patch $db | ignore
         }
-        {($ctx.id): null} | stardust patch $db | ignore
       }
     )
 
