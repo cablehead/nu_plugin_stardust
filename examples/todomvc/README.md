@@ -144,8 +144,11 @@ checks the id is a todo (`todos/get`) before deleting.
   ([gist](https://gist.github.com/cablehead/b715456696e01a8b6f77a2788535247a)).
   nu runs plugin calls on new threads, so the plugin makes every Stardust call
   from a fixed pool of threads instead (`src/pool.rs`).
-- While any subscription is open, each commit still grows the plugin by about
-  0.7 MB, which is not returned. Over enough writes it can still be OOM-killed.
+- While a subscription to a query with a `[schema ...]` clause is open, such
+  as `todos/list`, each commit grows the plugin by roughly 64 bytes per todo,
+  which is not returned
+  ([gist](https://gist.github.com/cablehead/8b9f2f1415a4b1447388c2be7c3692e7)).
+  Over enough writes it can still be OOM-killed.
   nu then starts a new plugin, but `$db` belongs to the old one and every call
   on it fails. So each request checks that the plugin found at startup is still
   in `/proc`. If it isn't, the server sends itself SIGKILL so its supervisor
