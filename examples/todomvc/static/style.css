@@ -24,6 +24,10 @@
 
   --motion: 200ms ease;
 
+  /* cross.stream's electric blue (http-nu's --color-accent-blue-stream):
+     cooler than the accent, for the time-travel bar. */
+  --stream: #00d4ff;
+
   /* The kinds of change, on the history header. */
   --change-added: #4cc38a;
   --change-completed: var(--accent);
@@ -113,7 +117,7 @@ header input[type="text"]::placeholder {
 
 .time-travel input[type="range"] {
   flex: 1;
-  accent-color: var(--accent);
+  accent-color: var(--stream);
 }
 
 [data-kind="added"] { --kind: var(--change-added); }
@@ -124,6 +128,11 @@ header input[type="text"]::placeholder {
 
 .time-travel button {
   padding: 0.25em 0.75em;
+}
+
+/* Play and pause glyphs differ in width: keep the button's. */
+.time-travel button.play {
+  min-width: 3em;
 }
 
 /* A history header: which change, and what it did. The same heights as the

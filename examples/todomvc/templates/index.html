@@ -76,15 +76,26 @@
       <!-- Time travel. $_steps lists the transactions that changed the list,
            oldest first, sent with each live update; the last is now. $at is
            the transaction shown, 0 for now (live), and $_pos its index in
-           $_steps. Signals starting with _ stay on the page: requests don't
-           send them. The slider sits above the todos, so it stays put. -->
+           $_steps. $_playing steps forward on a timer until now. Signals
+           starting with _ stay on the page: requests don't send them. The slider sits above the todos, so it stays put. -->
       <div
         class="time-travel"
-        data-signals="{at: 0, _steps: []}"
+        data-signals="{at: 0, _steps: [], _playing: false}"
         data-computed:_last="$_steps.length - 1"
         data-computed:_pos="$at == 0 ? $_steps.length - 1 : $_steps.indexOf($at)"
         data-init="@get('/sse')"
       >
+        <!-- Play steps one change forward per tick, from wherever the slider
+             is, and stops at now. Nothing to play while live. -->
+        <button
+          type="button"
+          class="play"
+          data-attr:aria-label="$_playing ? 'pause' : 'play'"
+          data-attr:disabled="$at == 0"
+          data-text="$_playing ? '\u275a\u275a' : '\u25b6'"
+          data-on:click="$_playing = !$_playing"
+          data-on-interval__duration.300ms="$_playing && ($at = $_pos + 1 >= $_last ? 0 : $_steps[$_pos + 1], $_playing = $at != 0, @get('/sse'))"
+        >&#9654;</button>
         <button
           type="button"
           aria-label="previous change"
@@ -108,7 +119,7 @@
         <button
           type="button"
           data-attr:aria-pressed="String($at == 0)"
-          data-on:click="$at != 0 && ($at = 0, @get('/sse'))"
+          data-on:click="$_playing = false; $at != 0 && ($at = 0, @get('/sse'))"
         >Now</button>
       </div>
 
