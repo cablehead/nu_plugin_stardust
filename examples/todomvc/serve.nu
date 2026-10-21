@@ -155,23 +155,46 @@ def changes [db] {
   stardust query $db todos/changes | update tx { $in.'#link' }
 }
 
-# What one change did, going from the list before to the list after:
-# Added "milk", Completed 3 todos, ...
-def describe-change [before: list, after: list]: nothing -> string {
+# How the list changed from before to after, as {kind, todos} rows: added,
+# deleted, completed and reopened, the ones that happened. Empty if it didn't.
+def diff-lists [before: list, after: list]: nothing -> list {
   let flipped = $after | where {|t| $t.e in $before.e? and $t not-in $before }
   [
-    [Added ($after | where e not-in $before.e?)]
-    [Deleted ($before | where e not-in $after.e?)]
-    [Completed ($flipped | where completed)]
-    [Reopened ($flipped | where not completed)]
+    {kind: added todos: ($after | where e not-in $before.e?)}
+    {kind: deleted todos: ($before | where e not-in $after.e?)}
+    {kind: completed todos: ($flipped | where completed)}
+    {kind: reopened todos: ($flipped | where not completed)}
   ]
-  | where { $in.1 | is-not-empty }
+  | where { $in.todos | is-not-empty }
+}
+
+# What one change did, as the history header says it: Added "milk",
+# Completed 3 todos, ...
+def describe-change [before: list, after: list]: nothing -> string {
+  diff-lists $before $after
   | each {|it|
-    let todos = $it.1
-    if ($todos | length) == 1 { $'($it.0) "($todos.0.text)"' } else { $"($it.0) ($todos | length) todos" }
+    let verb = $it.kind | str capitalize
+    if ($it.todos | length) == 1 { $'($verb) "($it.todos.0.text)"' } else { $"($verb) ($it.todos | length) todos" }
   }
   | str join ", "
 }
+
+# The history from before writes were tagged, as {tx, kind} rows like
+# todos/changes. No query lists it, so read the list as of each old
+# transaction, and keep the ones where it changed. That history can't change,
+# so this runs once, at startup. It ends where tagging starts, or at the
+# newest transaction if nothing is tagged yet.
+let legacy = changes $db
+  | get tx.0?
+  | default (stardust subscribe $db todos/list | first | get transaction | $in + 1)
+  | if $in <= 1 { [] } else {
+    1..($in - 1)
+    | each {|at| {tx: $at result: (stardust query $db todos/list-at --params {at: $at})} }
+    | prepend {tx: 0 result: []}
+    | window 2
+    | each {|pair| {tx: $pair.1.tx kind: (diff-lists $pair.0.result $pair.1.result | get kind.0?)} }
+    | where kind != null
+  }
 
 # Cache-buster for static/: a hash of its files, so a URL with ?v=<rev>
 # changes exactly when a file does.
@@ -197,11 +220,7 @@ let section = .mj compile ($here | path join templates/todos.html)
         | if $in == 0 {
           stardust subscribe $db todos/list
           | each {|event|
-            # A database from before changes were tagged ends untagged: make
-            # its current list the last step, so the slider still ends at now.
-            let changes = changes $db | if ($in | last | get tx? | default 0) < $event.transaction {
-              append {tx: $event.transaction kind: other}
-            } else { $in }
+            let changes = $legacy | append (changes $db)
             [
               ($event | insert live true | .mj render $section | to datastar-patch-elements)
               ({_steps: $changes.tx? _kinds: $changes.kind?} | to datastar-patch-signals)
@@ -210,7 +229,7 @@ let section = .mj compile ($here | path join templates/todos.html)
           | flatten
         } else {
           let at = $in
-          let changes = changes $db
+          let changes = $legacy | append (changes $db)
           let before = $changes | where tx < $at | last | get tx?
           let after = stardust query $db todos/list-at --params {at: $at}
           {

@@ -48,8 +48,11 @@ and the buttons beside it step by one. It sits above the list, and a past
 change's header and rows are the same height as live ones, so nothing moves
 as you scrub.
 
-Transactions from before changes were tagged aren't steps: a database from
-an earlier version of this example starts its history at its current list.
+A database from an earlier version of this example has history from before
+writes were tagged, which no query lists. `serve.nu` scans it once at
+startup: it reads the list as of each old transaction, keeps the ones where
+it changed, and puts those steps ahead of the tagged ones. That history
+never changes, and every later write is tagged, so the scan never grows.
 
 Buttons come in three tiers, as in the 2048 example: primary (solid accent:
 Clear completed, and Now while live), secondary (a slab that turns accent on
