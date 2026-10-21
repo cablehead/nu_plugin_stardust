@@ -139,3 +139,11 @@ checks the id is a todo (`todos/get`) before deleting.
   which ends it. See the plugin README's known limitations.
 - http-nu interrupts a disconnected viewer's request and logs it as an error
   (`Operation interrupted`). Other viewers are unaffected.
+- Stardust leaks about 4 MB for each thread that calls into it, and nu runs
+  every plugin call on a new thread, so the plugin grows until it is
+  OOM-killed
+  ([gist](https://gist.github.com/cablehead/b715456696e01a8b6f77a2788535247a)).
+  nu then starts a new plugin, but `$db` belongs to the old one and every call
+  on it fails. So each request checks that the plugin found at startup is still
+  in `/proc`. If it isn't, the server sends itself SIGKILL so its supervisor
+  starts it again (`exit` would only end the request).

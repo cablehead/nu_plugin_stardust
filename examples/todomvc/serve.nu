@@ -34,6 +34,38 @@ if $env.STARDUST_LICENSE? == null and ($license | path exists) {
 
 let db = stardust open ($state | path join todos.db)
 
+# This server's process id, and its plugin's: the child named
+# nu_plugin_stard (/proc truncates names to 15 characters).
+def self-pid []: nothing -> int {
+  open --raw /proc/self/stat | into string | split row " " | first | into int
+}
+def plugin-pid []: nothing -> any {
+  let me = self-pid
+  ls /proc
+  | where name =~ '^/proc/\d+$'
+  | get name
+  | each { try { open --raw ($in | path join stat) | into string | parse -r '^(?<pid>\d+) \((?<comm>.*)\) \S (?<ppid>\d+)' | first } catch { null } }
+  | compact
+  | where { ($in.ppid | into int) == $me and $in.comm == "nu_plugin_stard" }
+  | get pid.0?
+}
+
+# If the plugin dies (Stardust leaks memory per calling thread, so it can be
+# OOM-killed), nu starts a new one, but $db belongs to the old one and every
+# call on it fails from then on. Each request checks the plugin is still
+# there; if it isn't, the server kills itself so its supervisor starts it
+# again. SIGKILL, not exit: exit only ends the request, and a supervisor
+# that restarts on failure counts SIGTERM as a clean stop.
+let plugin = plugin-pid
+# Passes its input, the request body, through.
+def check-plugin [plugin] {
+  if $plugin != null and not ($"/proc/($plugin)" | path exists) {
+    print -e $"plugin ($plugin) is gone: restarting"
+    kill --force (self-pid)
+  }
+  $in
+}
+
 # A todo is exactly these two fields. Queries select todos with
 # [schema todo ?e], and mutations that do are checked against it.
 stardust define $db schemas todo '{
@@ -209,7 +241,8 @@ let index = .mj compile ($here | path join templates/index.html)
 let section = .mj compile ($here | path join templates/todos.html)
 
 {|req|
-  dispatch $req [
+  check-plugin $plugin
+  | dispatch $req [
     (
       # $at 0 is now: stream every change, and send the slider its steps. Any other $at renders that change once, read-only,
       # with what it did.
@@ -281,11 +314,11 @@ let section = .mj compile ($here | path join templates/todos.html)
 
     (
       route {method: DELETE path: "/completed"} {|req ctx|
+        # With nothing completed the patch would be only its tag, which
+        # Stardust refuses.
         stardust query $db todos/completed
         | get e
-        | delete-patch
-        | stardust patch $db
-        | ignore
+        | and-then { delete-patch | stardust patch $db | ignore }
       }
     )
 
