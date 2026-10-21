@@ -30,9 +30,10 @@
   --stream: #00d4ff;
   --stream-rest: #0077b6;
 
-  /* Now while live: home. 2048's warm cream header with its tile text. */
-  --home: #f4d9a0;
-  --on-home: #776e65;
+  /* Now while live: home. Forest green, with 2048's warm cream header color
+     for the text. */
+  --home: #2e6b45;
+  --on-home: #f4d9a0;
 
   /* The kinds of change, on the history header. */
   --change-added: #4cc38a;
