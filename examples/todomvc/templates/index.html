@@ -23,7 +23,6 @@
     <meta property="twitter:image" content="{{ url }}static/og.png?v={{ rev }}">
     <link rel="stylesheet" href="static/style.css?v={{ rev }}">
     <script type="module" src="{{ datastar }}"></script>
-    <script type="module" src="static/scrub-knob.js?v={{ rev }}"></script>
   </head>
   <body>
     <main>
@@ -75,14 +74,13 @@
       </div>
 
       <!-- Time travel. $_steps lists the transactions that changed the list,
-           oldest first, sent with each live update; the last is now. $_kinds
-           has each one's kind of change, drawn as marks on the slider. $at is
+           oldest first, sent with each live update; the last is now. $at is
            the transaction shown, 0 for now (live), and $_pos its index in
            $_steps. Signals starting with _ stay on the page: requests don't
            send them. The slider sits above the todos, so it stays put. -->
       <div
         class="time-travel"
-        data-signals="{at: 0, _steps: [], _kinds: []}"
+        data-signals="{at: 0, _steps: []}"
         data-computed:_last="$_steps.length - 1"
         data-computed:_pos="$at == 0 ? $_steps.length - 1 : $_steps.indexOf($at)"
         data-init="@get('/sse')"
@@ -93,14 +91,14 @@
           data-attr:disabled="$_pos <= 0"
           data-on:click="$at = $_steps[Math.max(0, $_pos - 1)]; @get('/sse')"
         >&lsaquo;</button>
-        <scrub-knob
+        <!-- max before value: a value past the old max would be clamped. -->
+        <input
+          type="range"
           min="0"
-          px-per-frame="auto"
-          data-attr:max="$_last"
-          data-attr:value="$_pos"
-          data-attr:marks="JSON.stringify($_kinds)"
-          data-on:scrub="$at = evt.detail.value >= $_last ? 0 : $_steps[evt.detail.value]; @get('/sse')"
-        ></scrub-knob>
+          aria-label="history"
+          data-effect="el.max = $_last; el.value = $_pos"
+          data-on:input__debounce.50ms="$at = +el.value >= $_last ? 0 : $_steps[+el.value]; @get('/sse')"
+        />
         <button
           type="button"
           aria-label="next change"
@@ -113,13 +111,6 @@
           data-on:click="$at != 0 && ($at = 0, @get('/sse'))"
         >Now</button>
       </div>
-
-      <p class="legend">
-        <span data-kind="added">added</span>
-        <span data-kind="completed">completed</span>
-        <span data-kind="reopened">reopened</span>
-        <span data-kind="deleted">deleted</span>
-      </p>
 
       <!-- Replaced by each /sse event: the header and the list. -->
       <div id="todos"></div>

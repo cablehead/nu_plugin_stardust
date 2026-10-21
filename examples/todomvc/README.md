@@ -32,8 +32,7 @@ the subscription's event count.
 The slider travels back through the list's history, one change per step.
 Every write tags its transaction with the kind of change it made
 (`#_tx {changes todos kind added}`; `#_tx` is the transaction's own entity),
-and `todos/changes` lists the tagged transactions. Their kinds are drawn as
-colored marks on the slider. Anywhere left of the right edge, the page shows
+and `todos/changes` lists the tagged transactions. Anywhere left of the right edge, the page shows
 the list as it was (`todos/list-at`, a query with `bind {with {db {asOf
 ?at}}}`), with a header saying which change it is and what it did, e.g.
 `Change 7 of 10 . Reopened "milk"`. It's read-only: an edit made while
@@ -41,10 +40,9 @@ viewing the past would land on the present, so the server renders the state
 as text, with no checkboxes, buttons or new-todo input. Back at the right
 edge, or with Now, it's live again.
 
-The slider is `<scrub-knob>` (`static/scrub-knob.js`), from http-nu's 2048
-example. A press away from the thumb jumps there, and a drag spreads the
-whole history across the track, at least 4 pixels per step. The arrow keys
-and the buttons beside it step by one. It sits above the list, and a past
+The slider is a plain `<input type="range">` over the steps, so the whole
+history spans its width and the thumb follows the pointer. The arrow keys
+and the buttons beside it step by one change. It sits above the list, and a past
 change's header and rows are the same height as live ones, so nothing moves
 as you scrub.
 

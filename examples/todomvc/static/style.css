@@ -24,7 +24,7 @@
 
   --motion: 200ms ease;
 
-  /* The kinds of change, on the slider's marks and the history header. */
+  /* The kinds of change, on the history header. */
   --change-added: #4cc38a;
   --change-completed: var(--accent);
   --change-reopened: #f5c542;
@@ -111,35 +111,9 @@ header input[type="text"]::placeholder {
   font-size: 0.85em;
 }
 
-.time-travel scrub-knob {
+.time-travel input[type="range"] {
   flex: 1;
-  --mark-added: var(--change-added);
-  --mark-completed: var(--change-completed);
-  --mark-reopened: var(--change-reopened);
-  --mark-deleted: var(--change-deleted);
-  --mark-other: var(--change-other);
-  --scrub-fill: var(--text-muted);
-}
-
-/* The key to the slider's marks. */
-.legend {
-  display: flex;
-  justify-content: center;
-  gap: 1.5em;
-  margin: -0.5em 0 1em 0;
-  padding: 0;
-  color: var(--text-muted);
-  font-size: 0.75em;
-  font-weight: normal;
-}
-
-.legend span::before {
-  content: "";
-  display: inline-block;
-  width: 0.6em;
-  height: 0.6em;
-  margin-right: 0.4em;
-  background: var(--kind);
+  accent-color: var(--accent);
 }
 
 [data-kind="added"] { --kind: var(--change-added); }

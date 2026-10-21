@@ -211,8 +211,7 @@ let section = .mj compile ($here | path join templates/todos.html)
 {|req|
   dispatch $req [
     (
-      # $at 0 is now: stream every change, and send the slider its steps
-      # and their kinds. Any other $at renders that change once, read-only,
+      # $at 0 is now: stream every change, and send the slider its steps. Any other $at renders that change once, read-only,
       # with what it did.
       route {method: GET path: "/sse"} {|req ctx|
         from datastar-signals $req
@@ -223,7 +222,7 @@ let section = .mj compile ($here | path join templates/todos.html)
             let changes = $legacy | append (changes $db)
             [
               ($event | insert live true | .mj render $section | to datastar-patch-elements)
-              ({_steps: $changes.tx? _kinds: $changes.kind?} | to datastar-patch-signals)
+              ({_steps: $changes.tx?} | to datastar-patch-signals)
             ]
           }
           | flatten
