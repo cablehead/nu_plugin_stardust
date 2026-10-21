@@ -173,6 +173,15 @@ def describe-change [before: list, after: list]: nothing -> string {
   | str join ", "
 }
 
+# Cache-buster for static/: a hash of its files, so a URL with ?v=<rev>
+# changes exactly when a file does.
+let rev = glob ($here | path join static "*")
+  | sort
+  | each { open --raw $in | hash md5 }
+  | str join
+  | hash md5
+  | str substring 0..7
+
 let index = .mj compile ($here | path join templates/index.html)
 let section = .mj compile ($here | path join templates/todos.html)
 
@@ -282,7 +291,7 @@ let section = .mj compile ($here | path join templates/todos.html)
         # proxies the last hop may be plain http.
         let host = $req.headers.host
         let scheme = if $host =~ '^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$' { "http" } else { "https" }
-        {datastar: $DATASTAR_JS_PATH url: $"($scheme)://($host)/"} | .mj render $index
+        {datastar: $DATASTAR_JS_PATH url: $"($scheme)://($host)/" rev: $rev} | .mj render $index
       }
     )
 
