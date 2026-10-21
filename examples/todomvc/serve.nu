@@ -76,25 +76,47 @@ stardust define $db queries todos/completed '{
   where [[schema todo ?e] [?e completed true]]
 }' | ignore
 
-# Set the todo ?id's completed flag. no_match if ?id isn't a todo.
-stardust define $db mutations todos/set '{
-  query {
-    parameters {id null completed true}
-    find       [?e]
-    where      [[schema todo ?e] [= ?e ?id]]
-  }
-  patch {?e {completed ?completed}}
+# Every write below tags its transaction with the kind of change it made
+# (#_tx is the transaction's own entity), so this lists the transactions that
+# changed the list, oldest first: the steps of the time-travel slider.
+stardust define $db queries todos/changes '{
+  find    [?tx ?kind]
+  where   [[?tx changes todos] [?tx kind ?kind]]
+  orderBy [?tx]
 }' | ignore
 
-# Set completed on every todo that isn't already ?completed.
-stardust define $db mutations todos/set-all '{
-  query {
-    parameters {completed true}
-    find       [?e]
-    where      [[schema todo ?e] [?e completed ?c] [!= ?c ?completed]]
+# The tag for a change of this kind: added, completed, reopened or deleted.
+def tag [kind: string] { {'#_tx': {changes: todos kind: $kind}} }
+
+# A todo's completed flag going to this value is this kind of change.
+def flag-kind [completed: bool] { if $completed { "completed" } else { "reopened" } }
+
+# The two mutations are built here and run inline, not stored: a tag can't
+# be a parameter, and Stardust won't store a mutation whose patch has #_tx.
+
+# Set the todo ?id's completed flag. no_match if ?id isn't a todo.
+def set-one [kind: string] {
+  {
+    query: {
+      parameters: {id: null completed: true}
+      find:       ['?e']
+      where:      [[schema todo '?e'] ['=' '?e' '?id']]
+    }
+    patch: ({'?e': {completed: '?completed'}} | merge (tag $kind))
   }
-  patch {?e {completed ?completed}}
-}' | ignore
+}
+
+# Set completed on every todo that isn't already ?completed.
+def set-all [kind: string] {
+  {
+    query: {
+      parameters: {completed: true}
+      find:       ['?e']
+      where:      [[schema todo '?e'] ['?e' completed '?c'] ['!=' '?c' '?completed']]
+    }
+    patch: ({'?e': {completed: '?completed'}} | merge (tag $kind))
+  }
+}
 
 def set-status [code: int] {
   metadata set { merge {'http.response': {status: $code}} }
@@ -125,7 +147,30 @@ def match-id-route [method: string] {
 
 # A patch that deletes each linked entity: [{#link: 7}] -> {"7": null}.
 def delete-patch []: list -> record {
-  each { {($in.'#link' | into string): null} } | into record
+  each { {($in.'#link' | into string): null} } | into record | merge (tag deleted)
+}
+
+# todos/changes as {tx: 7, kind: added} rows.
+def changes [db] {
+  stardust query $db todos/changes | update tx { $in.'#link' }
+}
+
+# What one change did, going from the list before to the list after:
+# Added "milk", Completed 3 todos, ...
+def describe-change [before: list, after: list]: nothing -> string {
+  let flipped = $after | where {|t| $t.e in $before.e? and $t not-in $before }
+  [
+    [Added ($after | where e not-in $before.e?)]
+    [Deleted ($before | where e not-in $after.e?)]
+    [Completed ($flipped | where completed)]
+    [Reopened ($flipped | where not completed)]
+  ]
+  | where { $in.1 | is-not-empty }
+  | each {|it|
+    let todos = $it.1
+    if ($todos | length) == 1 { $'($it.0) "($todos.0.text)"' } else { $"($it.0) ($todos | length) todos" }
+  }
+  | str join ", "
 }
 
 let index = .mj compile ($here | path join templates/index.html)
@@ -134,25 +179,39 @@ let section = .mj compile ($here | path join templates/todos.html)
 {|req|
   dispatch $req [
     (
-      # $at 0 is now: stream every change, and keep the slider's $latest
-      # current. Any other $at renders that transaction once, read-only.
+      # $at 0 is now: stream every change, and send the slider its steps
+      # and their kinds. Any other $at renders that change once, read-only,
+      # with what it did.
       route {method: GET path: "/sse"} {|req ctx|
         from datastar-signals $req
         | get at? | default 0
         | if $in == 0 {
           stardust subscribe $db todos/list
           | each {|event|
+            # A database from before changes were tagged ends untagged: make
+            # its current list the last step, so the slider still ends at now.
+            let changes = changes $db | if ($in | last | get tx? | default 0) < $event.transaction {
+              append {tx: $event.transaction kind: other}
+            } else { $in }
             [
               ($event | insert live true | .mj render $section | to datastar-patch-elements)
-              ({latest: $event.transaction} | to datastar-patch-signals)
+              ({_steps: $changes.tx? _kinds: $changes.kind?} | to datastar-patch-signals)
             ]
           }
           | flatten
         } else {
+          let at = $in
+          let changes = changes $db
+          let before = $changes | where tx < $at | last | get tx?
+          let after = stardust query $db todos/list-at --params {at: $at}
           {
-            result: (stardust query $db todos/list-at --params {at: $in})
-            transaction: $in
+            result: $after
+            transaction: $at
             live: false
+            step: ($changes | where tx <= $at | length)
+            steps: ($changes | length)
+            kind: ($changes | where tx == $at | get kind.0?)
+            change: (describe-change (if $before == null { [] } else { stardust query $db todos/list-at --params {at: $before} }) $after)
           }
           | .mj render $section
           | to datastar-patch-elements
@@ -168,7 +227,7 @@ let section = .mj compile ($here | path join templates/todos.html)
         | if ($in | is-empty) {
           "Empty todo text" | set-status 400
         } else {
-          {'#_todo': {text: $in completed: false}} | stardust patch $db | ignore
+          {'#_todo': {text: $in completed: false}} | merge (tag added) | stardust patch $db | ignore
         }
       }
     )
@@ -179,7 +238,7 @@ let section = .mj compile ($here | path join templates/todos.html)
       route {method: PATCH path: "/"} {|req ctx|
         from datastar-signals $req
         | select completed
-        | stardust mutate $db todos/set-all --params $in
+        | stardust mutate $db (set-all (flag-kind $in.completed)) --params $in
         | ignore
       }
     )
@@ -188,7 +247,7 @@ let section = .mj compile ($here | path join templates/todos.html)
       route (match-id-route PATCH) {|req ctx|
         from datastar-signals $req
         | {id: $ctx.id completed: $in.completed}
-        | stardust mutate $db todos/set --params $in
+        | stardust mutate $db (set-one (flag-kind $in.completed)) --params $in
         | if $in.status == "no_match" { not-found }
       }
     )

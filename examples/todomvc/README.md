@@ -29,17 +29,31 @@ browser <--SSE---------------- .mj render <--result---------+
 The metrics panel shows the transaction that produced the current result and
 the subscription's event count.
 
-The slider travels back through transactions. Anywhere left of the right
-edge, the page shows the list as it was (`todos/list-at`, a query with
-`bind {with {db {asOf ?at}}}`), read-only: an edit made while viewing the
-past would land on the present, so the server renders no controls, not even
-the new-todo input. Back at the right edge, or with Now, it's live again.
+The slider travels back through the list's history, one change per step.
+Every write tags its transaction with the kind of change it made
+(`#_tx {changes todos kind added}`; `#_tx` is the transaction's own entity),
+and `todos/changes` lists the tagged transactions. Their kinds are drawn as
+colored marks on the slider. Anywhere left of the right edge, the page shows
+the list as it was (`todos/list-at`, a query with `bind {with {db {asOf
+?at}}}`), with a header saying which change it is and what it did, e.g.
+`Change 7 of 10 . Reopened "milk"`. It's read-only: an edit made while
+viewing the past would land on the present, so the server renders the state
+as text, with no checkboxes, buttons or new-todo input. Back at the right
+edge, or with Now, it's live again.
 
 The slider is `<scrub-knob>` (`static/scrub-knob.js`), from http-nu's 2048
-example: dragging moves one transaction per 4 pixels, whatever the length of
-the history, and the arrow keys and the buttons beside it step by one. It
-sits above the list, and a past transaction's header and rows are the same
-height as live ones, so nothing moves as you scrub.
+example. A press away from the thumb jumps there, and a drag spreads the
+whole history across the track, at least 4 pixels per step. The arrow keys
+and the buttons beside it step by one. It sits above the list, and a past
+change's header and rows are the same height as live ones, so nothing moves
+as you scrub.
+
+Transactions from before changes were tagged aren't steps: a database from
+an earlier version of this example starts its history at its current list.
+
+Buttons come in three tiers, as in the 2048 example: primary (solid accent:
+Clear completed, and Now while live), secondary (a slab that turns accent on
+hover: the step buttons) and tertiary (bare text: each row's Delete).
 
 ## Requirements
 
@@ -92,15 +106,24 @@ harmless. The page sends the opposite of the state it rendered.
 - `queries todos/list-at`: the same, as of transaction `?at`.
 - `queries todos/get`: one todo, by `?id`. Delete checks it.
 - `queries todos/completed`: the completed todos. Clear-completed reads it.
-- `mutations todos/set`: sets one todo's `completed`. `no_match` means the id
-  isn't a todo.
-- `mutations todos/set-all`: sets `completed` on every todo that differs.
+- `queries todos/changes`: the tagged transactions and their kinds, oldest
+  first. The slider's steps.
+
+Two mutations are built in `serve.nu` and run inline instead:
+
+- `set-one`: sets one todo's `completed`. `no_match` means the id isn't a
+  todo.
+- `set-all`: sets `completed` on every todo that differs.
+
+They aren't stored because their tag can't be a parameter (`?kind` in a
+`#_tx` is `Invalid_Patch`), and Stardust refuses to store a mutation whose
+patch has a `#_tx` at all.
 
 A `null` parameter default makes `?id` required. `?completed` can't default
 to `null`: a mutation's patch is checked with its defaults filled in, and
 `{completed null}` would delete the field. The routes require it instead.
 
-Each definition selects todos with `[schema todo ?e]`, so a mutation that
+Each query and mutation selects todos with `[schema todo ?e]`, so a mutation that
 would leave a todo off-schema is refused with `schema_violation`, a 500. The
 page only sends booleans, so only a hand-made request gets one.
 

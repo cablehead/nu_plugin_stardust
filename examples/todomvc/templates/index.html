@@ -74,28 +74,38 @@
         </p>
       </div>
 
-      <!-- Time travel. $at is the transaction shown, 0 for now (live). $latest
-           is the transaction of the newest list, sent with each live update.
-           The slider sits above the todos, so it stays put as they change. -->
-      <div class="time-travel" data-signals="{at: 0, latest: 1}" data-init="@get('/sse')">
+      <!-- Time travel. $_steps lists the transactions that changed the list,
+           oldest first, sent with each live update; the last is now. $_kinds
+           has each one's kind of change, drawn as marks on the slider. $at is
+           the transaction shown, 0 for now (live), and $_pos its index in
+           $_steps. Signals starting with _ stay on the page: requests don't
+           send them. The slider sits above the todos, so it stays put. -->
+      <div
+        class="time-travel"
+        data-signals="{at: 0, _steps: [], _kinds: []}"
+        data-computed:_last="$_steps.length - 1"
+        data-computed:_pos="$at == 0 ? $_steps.length - 1 : $_steps.indexOf($at)"
+        data-init="@get('/sse')"
+      >
         <button
           type="button"
-          aria-label="previous transaction"
-          data-attr:disabled="$at == 1"
-          data-on:click="$at = Math.max(1, ($at || $latest) - 1); @get('/sse')"
+          aria-label="previous change"
+          data-attr:disabled="$_pos <= 0"
+          data-on:click="$at = $_steps[Math.max(0, $_pos - 1)]; @get('/sse')"
         >&lsaquo;</button>
         <scrub-knob
-          min="1"
-          px-per-frame="4"
-          data-attr:max="$latest"
-          data-attr:value="$at || $latest"
-          data-on:scrub="$at = evt.detail.value >= $latest ? 0 : evt.detail.value; @get('/sse')"
+          min="0"
+          px-per-frame="auto"
+          data-attr:max="$_last"
+          data-attr:value="$_pos"
+          data-attr:marks="JSON.stringify($_kinds)"
+          data-on:scrub="$at = evt.detail.value >= $_last ? 0 : $_steps[evt.detail.value]; @get('/sse')"
         ></scrub-knob>
         <button
           type="button"
-          aria-label="next transaction"
+          aria-label="next change"
           data-attr:disabled="$at == 0"
-          data-on:click="$at = $at + 1 >= $latest ? 0 : $at + 1; @get('/sse')"
+          data-on:click="$at = $_pos + 1 >= $_last ? 0 : $_steps[$_pos + 1]; @get('/sse')"
         >&rsaquo;</button>
         <button
           type="button"
@@ -103,6 +113,13 @@
           data-on:click="$at != 0 && ($at = 0, @get('/sse'))"
         >Now</button>
       </div>
+
+      <p class="legend">
+        <span data-kind="added">added</span>
+        <span data-kind="completed">completed</span>
+        <span data-kind="reopened">reopened</span>
+        <span data-kind="deleted">deleted</span>
+      </p>
 
       <!-- Replaced by each /sse event: the header and the list. -->
       <div id="todos"></div>

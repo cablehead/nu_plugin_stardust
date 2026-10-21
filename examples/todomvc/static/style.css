@@ -7,6 +7,29 @@
   --text-muted: #666666;
   --accent: #ff6600;
   --border: #333333;
+
+  /* Buttons come in three tiers, after http-nu's 2048 example:
+     primary    solid accent, the one action that matters here
+     secondary  a subdued slab that turns accent on hover
+     tertiary   bare text, for actions repeated on every row */
+  --primary: var(--accent);
+  --primary-hover: #ff8533;
+  --primary-press: #d95700;
+  --on-primary: var(--bg-primary);
+  --secondary: var(--bg-tertiary);
+  --on-secondary: var(--text-primary);
+  --tertiary: transparent;
+  --on-tertiary: var(--text-muted);
+  --button-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+
+  --motion: 200ms ease;
+
+  /* The kinds of change, on the slider's marks and the history header. */
+  --change-added: #4cc38a;
+  --change-completed: var(--accent);
+  --change-reopened: #f5c542;
+  --change-deleted: #ef5350;
+  --change-other: var(--text-muted);
 }
 
 * {
@@ -90,40 +113,59 @@ header input[type="text"]::placeholder {
 
 .time-travel scrub-knob {
   flex: 1;
+  --mark-added: var(--change-added);
+  --mark-completed: var(--change-completed);
+  --mark-reopened: var(--change-reopened);
+  --mark-deleted: var(--change-deleted);
+  --mark-other: var(--change-other);
+  --scrub-fill: var(--text-muted);
 }
+
+/* The key to the slider's marks. */
+.legend {
+  display: flex;
+  justify-content: center;
+  gap: 1.5em;
+  margin: -0.5em 0 1em 0;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 0.75em;
+  font-weight: normal;
+}
+
+.legend span::before {
+  content: "";
+  display: inline-block;
+  width: 0.6em;
+  height: 0.6em;
+  margin-right: 0.4em;
+  background: var(--kind);
+}
+
+[data-kind="added"] { --kind: var(--change-added); }
+[data-kind="completed"] { --kind: var(--change-completed); }
+[data-kind="reopened"] { --kind: var(--change-reopened); }
+[data-kind="deleted"] { --kind: var(--change-deleted); }
+[data-kind="other"] { --kind: var(--change-other); }
 
 .time-travel button {
   padding: 0.25em 0.75em;
 }
 
-/* Now is a toggle: filled while the page is live, an outline offering to go
-   back to live otherwise. */
-.time-travel button[aria-pressed="false"] {
-  background: transparent;
-  color: var(--accent);
-  box-shadow: inset 0 0 0 2px var(--accent);
-}
-
-/* Nothing to do on click, so no hover either. */
-.time-travel button[aria-pressed="true"],
-.time-travel button:disabled {
-  background: var(--accent);
-  cursor: default;
-}
-
-.time-travel button:disabled {
-  opacity: 0.3;
-}
-
-/* A past transaction's header: the same heights as the toggle-all row and
-   the text input it replaces. */
+/* A history header: which change, and what it did. The same heights as the
+   toggle-all row and the text input it replaces, so the list doesn't move. */
 header .past-title {
-  display: flex;
-  align-items: center;
   height: 1.8em;
+  line-height: 1.8em;
+  text-align: left;
   margin: 0 0 1em 0;
   padding: 0;
   color: var(--text-primary);
+}
+
+header .past-title span {
+  color: var(--text-muted);
+  font-weight: normal;
 }
 
 header .past-note {
@@ -131,9 +173,27 @@ header .past-note {
   padding: 1em;
   font-size: 1em;
   line-height: normal;
-  border: 2px dashed var(--border);
+  border: 2px solid var(--border);
+  border-left: 0.4em solid var(--kind);
+  color: var(--text-primary);
   text-align: left;
   font-weight: normal;
+}
+
+/* Switching between live and history swaps the header's rows, and scrubbing
+   adds and removes todos: each new one fades in. A row that stays, like the
+   history header while scrubbing, just changes its text. */
+header > *,
+li {
+  transition: opacity var(--motion), translate var(--motion);
+}
+
+@starting-style {
+  header > *,
+  li {
+    opacity: 0;
+    translate: 0 -0.3em;
+  }
 }
 
 section {
@@ -161,16 +221,28 @@ li:last-child {
 
 li[data-completed="true"] {
   opacity: 0.5;
-  text-decoration: line-through;
 }
 
-li label {
+/* A live row is a label around its checkbox; a history row is plain text,
+   with a mark in the checkbox's place. Both are as tall as the Delete
+   button, so a row is the same height either way. */
+li > label,
+li > span {
   display: flex;
   align-items: center;
   flex: 1;
-  /* The Delete button's height, so a read-only row (no button) is as tall. */
   min-height: 1.95em;
+}
+
+li > label {
   cursor: pointer;
+}
+
+li .mark {
+  width: 1.2em;
+  margin: 0 0.75em 0 3px;
+  text-align: center;
+  color: var(--text-muted);
 }
 
 input[type="checkbox"] {
@@ -180,20 +252,68 @@ input[type="checkbox"] {
   accent-color: var(--accent);
 }
 
+/* A button is secondary unless it says otherwise. */
 button {
   padding: 0.5em 1em;
-  background: var(--accent);
-  color: var(--bg-primary);
+  background: var(--secondary);
+  color: var(--on-secondary);
   border: none;
+  box-shadow: var(--button-shadow);
   cursor: pointer;
   font-family: inherit;
   font-weight: bold;
   font-size: 0.9em;
   text-transform: uppercase;
+  transition: background var(--motion), color var(--motion), translate 80ms, box-shadow 80ms;
 }
 
 button:hover {
-  background: var(--text-primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+button:active {
+  translate: 0 2px;
+  box-shadow: none;
+}
+
+/* A toggle that's on, like Now while live, is primary. */
+button.primary,
+button[aria-pressed="true"] {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+button.primary:hover {
+  background: var(--primary-hover);
+}
+
+button.primary:active {
+  background: var(--primary-press);
+}
+
+button.tertiary {
+  background: var(--tertiary);
+  color: var(--on-tertiary);
+  box-shadow: none;
+}
+
+button.tertiary:hover {
+  color: var(--primary);
+}
+
+/* Pressed or disabled, a click does nothing, so nothing moves. */
+button[aria-pressed="true"],
+button:disabled {
+  cursor: default;
+  translate: none;
+  box-shadow: var(--button-shadow);
+}
+
+button:disabled {
+  opacity: 0.3;
+  background: var(--secondary);
+  color: var(--on-secondary);
 }
 
 footer {

@@ -1,6 +1,7 @@
 {#- Rendered from a todos/list subscription event: result is its rows,
     {e: {"#link": 7}, text, completed}. live is false for a past
-    transaction, which renders read-only. -#}
+    transaction, which renders read-only, with step (1-based) of steps
+    and change, a description of what it did. -#}
 {%- set active_count = result | rejectattr("completed") | list | length %}
 {%- set completed_count = result | selectattr("completed") | list | length %}
 {%- set all_done = result | length > 0 and active_count == 0 %}
@@ -25,30 +26,37 @@
     "
   />
   {%- else -%}
-  {#- Rows the same height as the two above, so the list doesn't move. -#}
-  <p class="past-title">Transaction {{ transaction }}</p>
-  <p class="past-note">Read-only. Go to now to make changes.</p>
+  {#- History: which change this is, and what it did. The same heights as
+      the two rows above, so the list doesn't move. -#}
+  <p class="past-title">
+    <strong>Change {{ step }} of {{ steps }}</strong> <span>&middot; transaction {{ transaction }}</span>
+  </p>
+  <p class="past-note" data-kind="{{ kind or "other" }}">{{ change or "No change to the list" }}</p>
   {%- endif %}
 </header>
 <section>
   {% if result %}
   <ul>
     {% for todo in result | reverse %}{% set id = todo.e["#link"] %}
-    <li {% if todo.completed %} data-completed="true" {% endif %}>
+    <li id="todo-{{ id }}" {% if todo.completed %} data-completed="true" {% endif %}>
+      {% if live -%}
       <label>
         <input
           type="checkbox"
           data-init="el.checked = {{ todo.completed | lower }}"
-          {% if live -%}
           data-on:click__prevent="@patch('/{{ id }}', {payload: {completed: {{ (not todo.completed) | lower }}}})"
-          {%- else -%}
-          disabled
-          {%- endif %}
         />
-        {{ todo.text }}
+        {% if todo.completed %}<s>{{ todo.text }}</s>{% else %}{{ todo.text }}{% endif %}
       </label>
+      {%- else -%}
+      {#- History is read-only: the state as text, nothing to click. -#}
+      <span>
+        <span class="mark" aria-hidden="true">{% if todo.completed %}&check;{% else %}&#9675;{% endif %}</span>
+        {% if todo.completed %}<s>{{ todo.text }}</s>{% else %}{{ todo.text }}{% endif %}
+      </span>
+      {%- endif %}
       {% if live %}
-      <button type="button" data-on:click="@delete('/{{ id }}')">
+      <button type="button" class="tertiary" data-on:click="@delete('/{{ id }}')">
         Delete
       </button>
       {% endif %}
@@ -65,7 +73,7 @@
       %}items{% endif %} pending
     </p>
     {% if live and completed_count > 0 %}
-    <button type="button" data-on:click="@delete('/completed')">
+    <button type="button" class="primary" data-on:click="@delete('/completed')">
       Clear {{ completed_count }} completed {% if completed_count == 1 %}item{%
       else %}items{% endif %}
     </button>

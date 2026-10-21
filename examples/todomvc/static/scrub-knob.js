@@ -2,7 +2,8 @@
 //
 // From http-nu's 2048 example (MIT, Andy Gayton),
 // https://github.com/cablehead/http-nu/tree/main/examples/2048, with a
-// `min` attribute added.
+// `min` attribute, `px-per-frame="auto"`, a press away from the thumb
+// jumping to the pointer, and `marks`.
 //
 // Native <input type="range"> maps cursor x to value linearly: 1873
 // frames across a narrow row gives ~8 frames per pixel, way too coarse
@@ -19,6 +20,10 @@
 // intrusive in Safari. Capture trades infinite drag range for visible
 // cursor + no banner -- long scrubs need a lift-and-redrag.
 //
+// `marks` is a JSON list with a name per value, min first; each value gets a
+// tick on the track, colored var(--mark-<name>). Set --scrub-fill to keep
+// marks the color of the fill visible over it.
+//
 // Signal-in: caller sets `value` and `max` attributes (Datastar's
 // `data-attr:value="$pos"` works). Signal-out: caller listens for the
 // `scrub` (continuous) and `scrub-end` (pointer release) events and
@@ -31,7 +36,15 @@
 // a useful range in one pass: 0.5 px/frame gives ~480 frames per
 // slider-width drag, ~4x less sensitive than native. Tune per-host
 // via the `px-per-frame` attribute.
+//
+// `px-per-frame="auto"` spreads the range across the track, so one drag
+// covers all of it and the thumb stays under the pointer, but never below
+// PX_PER_FRAME_MIN, so single steps stay easy to hit on a long range.
 const PX_PER_FRAME_DEFAULT = 0.5;
+const PX_PER_FRAME_MIN = 4;
+
+// A press farther than this from the thumb jumps it to the pointer first.
+const THUMB_GRAB_PX = 12;
 
 const STYLES = `
   :host {
@@ -51,10 +64,24 @@ const STYLES = `
     background: rgba(255, 255, 255, 0.2);
     border-radius: 2px;
   }
+  .marks {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .marks i {
+    position: absolute;
+    top: 50%;
+    width: 2px;
+    height: 12px;
+    margin-left: -1px;
+    transform: translateY(-50%);
+    border-radius: 1px;
+  }
   .fill {
     position: absolute;
     top: 0; left: 0; bottom: 0;
-    background: var(--accent, dodgerblue);
+    background: var(--scrub-fill, var(--accent, dodgerblue));
     border-radius: inherit;
   }
   .thumb {
@@ -71,7 +98,7 @@ const STYLES = `
 `;
 
 class ScrubKnob extends HTMLElement {
-  static get observedAttributes() { return ["value", "min", "max", "px-per-frame"]; }
+  static get observedAttributes() { return ["value", "min", "max", "px-per-frame", "marks"]; }
 
   #v = 0;
   #min = 0;
@@ -80,11 +107,13 @@ class ScrubKnob extends HTMLElement {
   #dragId = null;
   #lastClientX = 0;
   #pxPerFrame = PX_PER_FRAME_DEFAULT;
+  #marks = [];
 
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this.shadowRoot.innerHTML = `<style>${STYLES}</style><div class="track"><div class="fill"></div></div><div class="thumb"></div>`;
+    this.shadowRoot.innerHTML = `<style>${STYLES}</style><div class="track"><div class="fill"></div></div><div class="marks"></div><div class="thumb"></div>`;
+    this.marksEl = this.shadowRoot.querySelector(".marks");
     this.fillEl = this.shadowRoot.querySelector(".fill");
     this.thumbEl = this.shadowRoot.querySelector(".thumb");
   }
@@ -101,6 +130,16 @@ class ScrubKnob extends HTMLElement {
 
   attributeChangedCallback(name, _old, val) {
     if (val == null) return;
+    if (name === "px-per-frame" && val === "auto") {
+      this.#pxPerFrame = null;
+      return;
+    }
+    if (name === "marks") {
+      try { this.#marks = JSON.parse(val); } catch { this.#marks = []; }
+      if (!Array.isArray(this.#marks)) this.#marks = [];
+      this.#paintMarks();
+      return;
+    }
     // Datastar's data-attr writes JSON.stringify($sig) into the
     // attribute, which yields the literal string "null" for NaN
     // signals (JSON has no NaN). Bail on anything not finite so a
@@ -108,8 +147,8 @@ class ScrubKnob extends HTMLElement {
     const n = +val;
     if (!Number.isFinite(n)) return;
     if (name === "value") this.#v = n;
-    else if (name === "min") this.#min = n;
-    else if (name === "max") this.#max = n;
+    else if (name === "min") { this.#min = n; this.#paintMarks(); }
+    else if (name === "max") { this.#max = n; this.#paintMarks(); }
     else if (name === "px-per-frame") this.#pxPerFrame = n > 0 ? n : PX_PER_FRAME_DEFAULT;
     this.#paint();
   }
@@ -120,6 +159,13 @@ class ScrubKnob extends HTMLElement {
   // seeded on pointerdown.
   #onPointerDown = (e) => {
     e.preventDefault();
+    const rect = this.getBoundingClientRect();
+    const span = this.#max - this.#min;
+    const thumbX = rect.left + (span > 0 ? ((this.#v - this.#min) / span) * rect.width : rect.width);
+    if (span > 0 && Math.abs(e.clientX - thumbX) > THUMB_GRAB_PX) {
+      const v = this.#min + Math.round(((e.clientX - rect.left) / rect.width) * span);
+      this.#commit(v, "scrub");
+    }
     // Don't auto-focus on mouse-down: Safari shows a focus ring on
     // click-then-focus that reads as "selected" even though
     // :focus-visible is supposed to suppress it. Keyboard users still
@@ -135,9 +181,10 @@ class ScrubKnob extends HTMLElement {
     const dx = e.clientX - this.#lastClientX;
     this.#lastClientX = e.clientX;
     this.#acc += dx;
-    const d = Math.trunc(this.#acc / this.#pxPerFrame);
+    const px = this.#pxPerFrame ?? Math.max(PX_PER_FRAME_MIN, this.getBoundingClientRect().width / Math.max(1, this.#max - this.#min));
+    const d = Math.trunc(this.#acc / px);
     if (!d) return;
-    this.#acc -= d * this.#pxPerFrame;
+    this.#acc -= d * px;
     this.#commit(this.#v + d, "scrub");
   };
 
@@ -172,6 +219,16 @@ class ScrubKnob extends HTMLElement {
     this.#v = clamped;
     this.#paint();
     this.dispatchEvent(new CustomEvent(eventName, { detail: { value: clamped } }));
+  }
+
+  #paintMarks() {
+    const span = this.#max - this.#min;
+    this.marksEl.replaceChildren(...this.#marks.map((name, i) => {
+      const tick = document.createElement("i");
+      tick.style.left = `${span > 0 ? (i / span) * 100 : 100}%`;
+      tick.style.background = `var(--mark-${name}, currentColor)`;
+      return tick;
+    }));
   }
 
   #paint() {
