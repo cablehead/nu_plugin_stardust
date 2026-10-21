@@ -15,8 +15,8 @@ list itself, so the reducer is gone:
   returns 204. It renders nothing.
 - **Reads.** Each viewer opens `GET /sse`, an SSE stream of
   `stardust subscribe $db todos/list`. Stardust sends the whole result now
-  and again after every commit that changes it. Each result renders the
-  header's `#toggle-all` and the `#todos-section` directly from the event
+  and again after every commit that changes it. Each result renders
+  `#todos`, the header and the list, directly from the event
   (`templates/todos.html` reads its rows, `transaction` and `sequence`) and
   is sent as a `datastar-patch-elements` event.
 
@@ -31,8 +31,15 @@ the subscription's event count.
 
 The slider travels back through transactions. Anywhere left of the right
 edge, the page shows the list as it was (`todos/list-at`, a query with
-`bind {with {db {asOf ?at}}}`) and is read-only: an edit made while viewing
-the past would land on the present. Back at the right edge, it's live again.
+`bind {with {db {asOf ?at}}}`), read-only: an edit made while viewing the
+past would land on the present, so the server renders no controls, not even
+the new-todo input. Back at the right edge, or with Now, it's live again.
+
+The slider is `<scrub-knob>` (`static/scrub-knob.js`), from http-nu's 2048
+example: dragging moves one transaction per 4 pixels, whatever the length of
+the history, and the arrow keys and the buttons beside it step by one. It
+sits above the list, and a past transaction's header and rows are the same
+height as live ones, so nothing moves as you scrub.
 
 ## Requirements
 

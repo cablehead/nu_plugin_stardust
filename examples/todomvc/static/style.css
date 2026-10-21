@@ -48,6 +48,7 @@ header {
 header label {
   display: flex;
   align-items: center;
+  height: 1.8em;
   margin-bottom: 1em;
   font-weight: bold;
 }
@@ -81,20 +82,44 @@ header input[type="text"]::placeholder {
 .time-travel {
   display: flex;
   align-items: center;
-  gap: 1em;
+  gap: 0.75em;
   margin-bottom: 1em;
   color: var(--text-secondary);
   font-size: 0.85em;
 }
 
-.time-travel input[type="range"] {
+.time-travel scrub-knob {
   flex: 1;
-  accent-color: var(--accent);
 }
 
-.time-travel span {
-  min-width: 14em;
-  text-align: right;
+.time-travel button {
+  padding: 0.25em 0.75em;
+}
+
+.time-travel button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* A past transaction's header: the same heights as the toggle-all row and
+   the text input it replaces. */
+header .past-title {
+  display: flex;
+  align-items: center;
+  height: 1.8em;
+  margin: 0 0 1em 0;
+  padding: 0;
+  color: var(--text-primary);
+}
+
+header .past-note {
+  margin: 0;
+  padding: 1em;
+  font-size: 1em;
+  line-height: normal;
+  border: 2px dashed var(--border);
+  text-align: left;
+  font-weight: normal;
 }
 
 section {
@@ -129,6 +154,8 @@ li label {
   display: flex;
   align-items: center;
   flex: 1;
+  /* The Delete button's height, so a read-only row (no button) is as tall. */
+  min-height: 1.95em;
   cursor: pointer;
 }
 

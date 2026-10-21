@@ -4,20 +4,33 @@
 {%- set active_count = result | rejectattr("completed") | list | length %}
 {%- set completed_count = result | selectattr("completed") | list | length %}
 {%- set all_done = result | length > 0 and active_count == 0 %}
-{#- Replaces the header's #toggle-all: checked when every todo is completed. -#}
-<label id="toggle-all">
+<div id="todos">
+<header>
+  {% if live -%}
+  <label>
+    <input
+      type="checkbox"
+      data-init="el.checked = {{ all_done | lower }}"
+      data-on:click__prevent="@patch('/', {payload: {completed: {{ (not all_done) | lower }}}})"
+    />
+    Toggle All
+  </label>
   <input
-    type="checkbox"
-    data-init="el.checked = {{ all_done | lower }}"
-    {% if live -%}
-    data-on:click__prevent="@patch('/', {payload: {completed: {{ (not all_done) | lower }}}})"
-    {%- else -%}
-    disabled
-    {%- endif %}
+    id="new-todo"
+    type="text"
+    placeholder="What needs to be done?"
+    data-bind:input
+    data-on:keydown="
+      evt.key === 'Enter' && $input.trim() && @post('/') && ($input = '');
+    "
   />
-  Toggle All
-</label>
-<section id="todos-section">
+  {%- else -%}
+  {#- Rows the same height as the two above, so the list doesn't move. -#}
+  <p class="past-title">Transaction {{ transaction }}</p>
+  <p class="past-note">Read-only. Go to now to make changes.</p>
+  {%- endif %}
+</header>
+<section>
   {% if result %}
   <ul>
     {% for todo in result | reverse %}{% set id = todo.e["#link"] %}
@@ -69,3 +82,4 @@
     </div>
   </div>
 </section>
+</div>

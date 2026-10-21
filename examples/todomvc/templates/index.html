@@ -23,6 +23,7 @@
     <meta property="twitter:image" content="{{ url }}static/og.png">
     <link rel="stylesheet" href="static/style.css">
     <script type="module" src="{{ datastar }}"></script>
+    <script type="module" src="static/scrub-knob.js"></script>
   </head>
   <body>
     <main>
@@ -73,38 +74,38 @@
         </p>
       </div>
 
-      <header>
-        <label id="toggle-all">
-          <input type="checkbox" disabled />
-          Toggle All
-        </label>
-        <input
-          type="text"
-          placeholder="What needs to be done?"
-          data-attr:disabled="$at != 0"
-          data-bind:input
-          data-on:keydown="
-            evt.key === 'Enter' && $input.trim() && @post('/') && ($input = '');
-          "
-        />
-      </header>
-
       <!-- Time travel. $at is the transaction shown, 0 for now (live). $latest
-           is the transaction of the newest list, sent with each live update. -->
-      <div class="time-travel" data-signals="{at: 0, latest: 1}">
-        <input
-          type="range"
+           is the transaction of the newest list, sent with each live update.
+           The slider sits above the todos, so it stays put as they change. -->
+      <div class="time-travel" data-signals="{at: 0, latest: 1}" data-init="@get('/sse')">
+        <button
+          type="button"
+          aria-label="previous transaction"
+          data-attr:disabled="$at == 1"
+          data-on:click="$at = Math.max(1, ($at || $latest) - 1); @get('/sse')"
+        >&lsaquo;</button>
+        <scrub-knob
           min="1"
+          px-per-frame="4"
           data-attr:max="$latest"
-          data-effect="if ($at == 0) el.value = $latest"
-          data-on:input__debounce.80ms="$at = +el.value >= $latest ? 0 : +el.value; @get('/sse')"
-        />
-        <span data-text="$at == 0 ? 'now' : 'transaction ' + $at + ' (read-only)'">now</span>
+          data-attr:value="$at || $latest"
+          data-on:scrub="$at = evt.detail.value >= $latest ? 0 : evt.detail.value; @get('/sse')"
+        ></scrub-knob>
+        <button
+          type="button"
+          aria-label="next transaction"
+          data-attr:disabled="$at == 0"
+          data-on:click="$at = $at + 1 >= $latest ? 0 : $at + 1; @get('/sse')"
+        >&rsaquo;</button>
+        <button
+          type="button"
+          data-attr:disabled="$at == 0"
+          data-on:click="$at = 0; @get('/sse')"
+        >Now</button>
       </div>
 
-      <section id="todos-section" data-init="@get('/sse')">
-        <!-- Dynamic todo list and footer will be rendered here -->
-      </section>
+      <!-- Replaced by each /sse event: the header and the list. -->
+      <div id="todos"></div>
     </main>
   </body>
 </html>
