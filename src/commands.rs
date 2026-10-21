@@ -15,6 +15,7 @@ use stardust::{Commit, Database, Document, Format, Options, Rows, RunOptions, So
 
 use crate::convert::{from_document, from_sd, sd_err, to_document};
 use crate::plugin::{DbHandle, StardustPlugin};
+use crate::pool;
 
 pub fn all() -> Vec<Box<dyn PluginCommand<Plugin = StardustPlugin>>> {
     let mut commands: Vec<Box<dyn PluginCommand<Plugin = StardustPlugin>>> = vec![
@@ -34,7 +35,35 @@ pub fn all() -> Vec<Box<dyn PluginCommand<Plugin = StardustPlugin>>> {
         Box::new(PluginCall),
     ];
     commands.extend(formats());
-    commands
+    commands.into_iter().map(|command| Box::new(Pooled(command)) as Box<dyn PluginCommand<Plugin = StardustPlugin>>).collect()
+}
+
+/// A command that runs on the Stardust pool (see `pool`).
+struct Pooled(Box<dyn PluginCommand<Plugin = StardustPlugin>>);
+
+impl PluginCommand for Pooled {
+    type Plugin = StardustPlugin;
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+    fn signature(&self) -> Signature {
+        self.0.signature()
+    }
+    fn description(&self) -> &str {
+        self.0.description()
+    }
+    fn extra_description(&self) -> &str {
+        self.0.extra_description()
+    }
+    fn search_terms(&self) -> Vec<&str> {
+        self.0.search_terms()
+    }
+    fn examples(&self) -> Vec<Example<'_>> {
+        self.0.examples()
+    }
+    fn run(&self, plugin: &StardustPlugin, engine: &EngineInterface, call: &EvaluatedCall, input: PipelineData) -> Result<PipelineData, LabeledError> {
+        pool::run(|| self.0.run(plugin, engine, call, input))
+    }
 }
 
 /// Declares a command struct with its signature builder.
@@ -383,6 +412,12 @@ struct RowStream {
     span: Span,
 }
 
+impl Drop for RowStream {
+    fn drop(&mut self) {
+        pool::drop(self.rows.take());
+    }
+}
+
 impl Iterator for RowStream {
     type Item = Value;
     fn next(&mut self) -> Option<Value> {
@@ -391,17 +426,17 @@ impl Iterator for RowStream {
                 return Some(row);
             }
             let rows = self.rows.as_mut()?;
-            let page = match rows.next_page().and_then(|p| p.to_value()) {
+            let page = match pool::run(|| rows.next_page().and_then(|p| p.to_value())) {
                 Ok(page) => page,
                 Err(e) => {
-                    self.rows = None;
+                    pool::drop(self.rows.take());
                     return Some(Value::error(sd_err(e, self.span).into(), self.span));
                 }
             };
             match from_sd(page, self.span) {
                 Value::List { vals, .. } if !vals.is_empty() => self.page = vals.into_iter(),
                 _ => {
-                    self.rows = None; // the empty page ends the cursor
+                    pool::drop(self.rows.take()); // the empty page ends the cursor
                     return None;
                 }
             }
@@ -478,6 +513,12 @@ struct EventStream {
     span: Span,
 }
 
+impl Drop for EventStream {
+    fn drop(&mut self) {
+        pool::drop(self.sub.take());
+    }
+}
+
 impl Iterator for EventStream {
     type Item = Value;
     fn next(&mut self) -> Option<Value> {
@@ -489,29 +530,35 @@ impl Iterator for EventStream {
             match wait(sub.next(), LIVENESS) {
                 None => {
                     if self.engine.get_current_dir().is_err() {
-                        self.sub = None;
+                        pool::drop(self.sub.take());
                         return None;
                     }
                 }
                 Some(Ok(Some(event))) => {
-                    let result = match from_document(&event.result, span) {
-                        Ok(v) => v,
-                        Err(e) => Value::error(e.into(), span),
-                    };
+                    // Reading the document calls Stardust, and so does
+                    // releasing it: both on the pool.
+                    let (result, event) = pool::run(move || {
+                        let result = match from_document(&event.result, span) {
+                            Ok(v) => v,
+                            Err(e) => Value::error(e.into(), span),
+                        };
+                        (result, (event.sequence, event.transaction, event.superseded))
+                    });
+                    let (sequence, transaction, superseded) = event;
                     let mut record = Record::new();
-                    record.push("sequence", Value::int(event.sequence, span));
-                    record.push("transaction", Value::int(event.transaction, span));
-                    record.push("superseded", Value::int(event.superseded, span));
+                    record.push("sequence", Value::int(sequence, span));
+                    record.push("transaction", Value::int(transaction, span));
+                    record.push("superseded", Value::int(superseded, span));
                     record.push("result", result);
                     return Some(Value::record(record, span));
                 }
                 // Cancelled, or the database closed.
                 Some(Ok(None)) => {
-                    self.sub = None;
+                    pool::drop(self.sub.take());
                     return None;
                 }
                 Some(Err(e)) => {
-                    self.sub = None;
+                    pool::drop(self.sub.take());
                     return Some(Value::error(sd_err(e, span).into(), span));
                 }
             }
@@ -519,9 +566,13 @@ impl Iterator for EventStream {
     }
 }
 
-/// Polls `future` on this thread for up to `timeout`, parking between polls.
+/// Polls `future` for up to `timeout`, parking this thread between polls.
 /// The binding's subscriptions are async only; nu's streams are iterators.
-fn wait<F: Future>(future: F, timeout: Duration) -> Option<F::Output> {
+/// Each poll calls Stardust, so it runs on the pool; the wait doesn't.
+fn wait<F: Future + Send>(future: F, timeout: Duration) -> Option<F::Output>
+where
+    F::Output: Send,
+{
     struct Unpark(std::thread::Thread);
     impl Wake for Unpark {
         fn wake(self: Arc<Self>) {
@@ -529,11 +580,10 @@ fn wait<F: Future>(future: F, timeout: Duration) -> Option<F::Output> {
         }
     }
     let waker = Waker::from(Arc::new(Unpark(std::thread::current())));
-    let mut context = Context::from_waker(&waker);
     let mut future = pin!(future);
     let deadline = Instant::now() + timeout;
     loop {
-        if let Poll::Ready(output) = future.as_mut().poll(&mut context) {
+        if let Poll::Ready(output) = pool::run(|| future.as_mut().poll(&mut Context::from_waker(&waker))) {
             return Some(output);
         }
         let left = deadline.saturating_duration_since(Instant::now());
