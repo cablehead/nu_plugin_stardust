@@ -24,9 +24,15 @@
 
   --motion: 200ms ease;
 
-  /* cross.stream's electric blue (http-nu's --color-accent-blue-stream):
-     cooler than the accent, for the time-travel bar. */
+  /* The time-travel bar: cross.stream's electric blue (http-nu's
+     --color-accent-blue-stream) while in history, and 2048's deep body blue,
+     calmer, while live. */
   --stream: #00d4ff;
+  --stream-rest: #0077b6;
+
+  /* Now while live: home. 2048's warm cream header with its tile text. */
+  --home: #f4d9a0;
+  --on-home: #776e65;
 
   /* The kinds of change, on the history header. */
   --change-added: #4cc38a;
@@ -118,6 +124,16 @@ header input[type="text"]::placeholder {
 .time-travel input[type="range"] {
   flex: 1;
   accent-color: var(--stream);
+}
+
+/* Live (Now pressed): the bar rests in the calmer blue. */
+.time-travel:has([aria-pressed="true"]) input[type="range"] {
+  accent-color: var(--stream-rest);
+}
+
+.time-travel button[aria-pressed="true"] {
+  background: var(--home);
+  color: var(--on-home);
 }
 
 [data-kind="added"] { --kind: var(--change-added); }
