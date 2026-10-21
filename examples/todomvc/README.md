@@ -104,6 +104,8 @@ harmless. The page sends the opposite of the state it rendered.
 - `schemas todo`: `{text, completed}`, a non-empty string and a boolean,
   nothing else.
 - `queries todos/list`: every todo, oldest first. Viewers subscribe to it.
+  It selects todos by their two fields instead of `[schema todo ?e]`; see
+  the notes.
 - `queries todos/list-at`: the same, as of transaction `?at`.
 - `queries todos/get`: one todo, by `?id`. Delete checks it.
 - `queries todos/completed`: the completed todos. Clear-completed reads it.
@@ -124,7 +126,7 @@ A `null` parameter default makes `?id` required. `?completed` can't default
 to `null`: a mutation's patch is checked with its defaults filled in, and
 `{completed null}` would delete the field. The routes require it instead.
 
-Each query and mutation selects todos with `[schema todo ?e]`, so a mutation that
+The other queries and both mutations select todos with `[schema todo ?e]`, so a mutation that
 would leave a todo off-schema is refused with `schema_violation`, a 500. The
 page only sends booleans, so only a hand-made request gets one.
 
@@ -144,11 +146,13 @@ checks the id is a todo (`todos/get`) before deleting.
   ([gist](https://gist.github.com/cablehead/b715456696e01a8b6f77a2788535247a)).
   nu runs plugin calls on new threads, so the plugin makes every Stardust call
   from a fixed pool of threads instead (`src/pool.rs`).
-- While a subscription to a query with a `[schema ...]` clause is open, such
-  as `todos/list`, each commit grows the plugin by roughly 64 bytes per todo,
-  which is not returned
+- While a subscription to a query with a `[schema ...]` clause is open, each
+  commit grows the plugin by roughly 64 bytes per matching entity, which is
+  not returned
   ([gist](https://gist.github.com/cablehead/8b9f2f1415a4b1447388c2be7c3692e7)).
-  Over enough writes it can still be OOM-killed.
+  A plain query with the clause doesn't. So `todos/list`, the one query
+  viewers subscribe to, has no schema clause.
+- The plugin can still die, from a leak not found yet or otherwise.
   nu then starts a new plugin, but `$db` belongs to the old one and every call
   on it fails. So each request checks that the plugin found at startup is still
   in `/proc`. If it isn't, the server sends itself SIGKILL so its supervisor

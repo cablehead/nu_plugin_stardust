@@ -68,6 +68,7 @@ def check-plugin [plugin] {
 
 # A todo is exactly these two fields. Queries select todos with
 # [schema todo ?e], and mutations that do are checked against it.
+# todos/list doesn't: see there.
 stardust define $db schemas todo '{
   type                 object
   properties           {text {type string minLength 1} completed {type boolean}}
@@ -79,10 +80,13 @@ stardust define $db schemas todo '{
 # a mutation's patch is checked with the defaults filled in, and
 # {completed null} would delete the field.
 
-# The read model every viewer sees: all todos, oldest first.
+# The read model every viewer sees: all todos, oldest first. It selects them
+# by their two fields, not [schema todo ?e]: only todos have both, and a
+# subscription to a query with a schema clause grows by about 64 bytes per
+# todo on every commit, never returned (see the README).
 stardust define $db queries todos/list '{
   find    [?e ?text ?completed]
-  where   [[schema todo ?e] [?e text ?text] [?e completed ?completed]]
+  where   [[?e text ?text] [?e completed ?completed]]
   orderBy [?e]
 }' | ignore
 
