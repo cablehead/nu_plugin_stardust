@@ -99,8 +99,8 @@
         >&rsaquo;</button>
         <button
           type="button"
-          data-attr:disabled="$at == 0"
-          data-on:click="$at = 0; @get('/sse')"
+          data-attr:aria-pressed="String($at == 0)"
+          data-on:click="$at != 0 && ($at = 0, @get('/sse'))"
         >Now</button>
       </div>
 
