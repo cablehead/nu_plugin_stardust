@@ -4,7 +4,7 @@ description: "the stardust calls that wait for the next thing to arrive, and how
 ---
 # thinking about an async abi
 
-in [alpha-2610212237](../alpha-2610212237/), these calls wait for the next thing to arrive. an async client needs to be told when each is ready, instead of blocking a thread. only the first can do that today.
+in [alpha-2610212237](../alpha-2610212237/), these calls wait for the next thing to arrive. only the first can tell an async client when it's ready. for the other three, the client has to poll, block, or give each one its own thread.
 
 | call | waits for | async |
 |---|:---|:---|
