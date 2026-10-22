@@ -211,9 +211,9 @@ Entity references stay as `{#link id}` records.
 - **Threads.** In this release the database and its handles are `Send + Sync`,
   so one plugin process serves every call. All jobs in a nu session share it.
   Every call into Stardust runs on a small fixed pool of threads
-  (`src/pool.rs`): with this site's database, Stardust kept memory for each
-  thread that called it, even after the thread exited (unconfirmed, see the
-  TodoMVC notes), and nu runs plugin calls on new threads.
+  (`src/pool.rs`): Stardust keeps memory for each thread that runs a query,
+  even after the thread exits (see the TodoMVC notes), and nu runs plugin
+  calls on new threads.
 - **Subscriptions.** The binding's `next` is async; nu streams are iterators.
   So the stream polls `next().await` on its own thread, parking until
   Stardust wakes it.

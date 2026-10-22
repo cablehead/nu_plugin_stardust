@@ -142,10 +142,10 @@ checks the id is a todo (`todos/get`) before deleting.
   which ends it. See the plugin README's known limitations.
 - http-nu interrupts a disconnected viewer's request and logs it as an error
   (`Operation interrupted`). Other viewers are unaffected.
-- With this site's database, Stardust kept memory for each thread that
-  called into it, and didn't reclaim it when the thread exited. It's
-  unconfirmed: a fresh database doesn't show it, and a repro is in progress
-  (see [`notes/`](notes)). nu runs plugin calls on new threads, so the plugin
+- Stardust keeps memory for each thread that runs a query, and doesn't
+  reclaim it when the thread exits: about 4 MB per thread in
+  alpha-2610171653, about 0.4 MB in alpha-2610212237 (see
+  [`notes/`](notes)). nu runs plugin calls on new threads, so the plugin
   makes every Stardust call from a fixed pool of threads instead
   (`src/pool.rs`).
 - If the plugin dies, out of memory for instance, nu starts a new plugin,

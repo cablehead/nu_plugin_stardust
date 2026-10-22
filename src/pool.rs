@@ -1,12 +1,12 @@
 //! A fixed set of threads for every call into Stardust.
 //!
-//! With the TodoMVC example's database, Stardust kept memory for each thread
-//! that called into it, up to 4 MB, and didn't reclaim it when the thread
-//! exited (unconfirmed: a fresh database doesn't show it). nu runs a plugin
-//! call on a new thread whenever its runner thread is busy, which it is
-//! while any stream is open, so calling Stardust from there grew the plugin
-//! with every call until it was OOM-killed. Calls run here instead, on at
-//! most `size()` threads that live as long as the plugin.
+//! Stardust keeps memory for each thread that runs a query, and doesn't
+//! reclaim it when the thread exits: about 4 MB per thread in
+//! alpha-2610171653, about 0.4 MB in alpha-2610212237. nu runs a plugin call
+//! on a new thread whenever its runner thread is busy, which it is while any
+//! stream is open, so calling Stardust from there grows the plugin with
+//! every call until it is OOM-killed. Calls run here instead, on at most
+//! `size()` threads that live as long as the plugin.
 
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::mpsc::{self, Sender};

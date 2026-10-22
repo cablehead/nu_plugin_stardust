@@ -1,33 +1,41 @@
 ---
-description: "schema clause leak: about 0.25 MB per commit, never freed. per-thread arena: unconfirmed, still working on a repro."
+description: "per-thread leak: about 4 MB per thread, never freed. schema clause leak: about 0.25 MB per commit, never freed."
 # Each file beside this page, shown at the end of the section with that id.
 code:
+  leak.c: per-thread
   subcommit.c: schema-clause
 ---
 # stardust alpha-2610171653
 
-- [per-thread arena](#per-thread): unconfirmed, still working on a repro. the
+- [per-thread leak](#per-thread): about 4 MB per thread, never freed. the
   plugin uses a fixed thread pool
 - [schema clause leak](#schema-clause): about 0.25 MB per commit, never
   freed. fixed in [alpha-2610212237](../alpha-2610212237/#schema-clause)
 
-## per-thread arena {#per-thread}
+## per-thread leak {#per-thread}
 
-unconfirmed, still working on a repro. memory grew with every new thread
-that called stardust, and wasn't freed when the thread exited. a fixed pool
-of threads stayed flat. but these numbers come from one database, a copy of
-this site's: with a fresh database, neither this release nor the next one
-grows.
+memory grows with every new thread that calls stardust, and isn't freed when
+the thread exits. a fixed pool of threads stays flat.
 
-resident size, 400 queries on that database:
+[`leak.c`](#leak-c) creates a new, empty database and runs one inline query
+400 times: on a new thread each ([`MODE=new`](#leak-c)), or on 4 reused
+threads ([`MODE=pool`](#leak-c)).
+
+```
+gcc -O2 -I$STARDUST/abi leak.c -L$STARDUST/lib/linux_amd64 -lstardust -lpthread \
+  -Wl,-rpath,$STARDUST/lib/linux_amd64 -o leak
+STARDUST_LICENSE=... MODE=new ./leak new.db
+```
+
+resident size:
 
 | queries | a new thread each | 4 reused threads |
 |---|---|---|
-| start | 13 MB | 13 MB |
-| 100 | 359 MB | 33 MB |
-| 200 | 759 MB | 33 MB |
-| 300 | 1159 MB | 33 MB |
-| 400 | 1559 MB | 33 MB |
+| start | 15 MB | 15 MB |
+| 100 | 373 MB | 48 MB |
+| 200 | 781 MB | 48 MB |
+| 300 | 1189 MB | 48 MB |
+| 400 | 1597 MB | 48 MB |
 
 ## schema clause leak {#schema-clause}
 
