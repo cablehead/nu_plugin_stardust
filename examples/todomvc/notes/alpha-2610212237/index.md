@@ -12,6 +12,7 @@ code:
 - [schema clause leak](#schema-clause): fixed
 - an asOf parameter can't default to null: [`todos/list-at`](https://github.com/cablehead/nu_plugin_stardust/blob/f5e0c7a/examples/todomvc/serve.nu#L92) defaults ?at to 1
 - [`reactors sync`](https://github.com/cablehead/nu_plugin_stardust/commit/e168e50) is gone
+- [the abi](abi), grouped by use, sync or async
 
 ## open {#open}
 

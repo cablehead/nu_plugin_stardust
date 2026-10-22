@@ -1,9 +1,26 @@
-{#- A release's notes page: title, description, url and image (absolute,
-    or none) for its meta tags, and body, the HTML rendered from its
-    markdown. code is the stylesheet for highlighted code blocks. releases
-    is the contents, newest first: {name, current, sections: [{title, id,
-    subs}]}, subs being [{title, id, file}] (file: true for included code),
-    with sections only for the page being read. -#}
+{#- A notes page: title, description, url and image (absolute, or none)
+    for its meta tags, and body, the HTML rendered from its markdown. code
+    is the stylesheet for highlighted code blocks. releases is the
+    contents, newest first: {name, current, sections, pages: [{name,
+    current, sections}]}, sections being [{title, id, subs}] and subs
+    [{title, id, file}] (file: true for included code), with sections only
+    for the page being read. -#}
+{%- macro contents(sections) %}
+                <ul>
+                  {%- for s in sections %}
+                  <li>
+                    <a href="#{{ s.id }}">{{ s.title }}</a>
+                    {%- if s.subs %}
+                    <ul>
+                      {%- for sub in s.subs %}
+                      <li><a href="#{{ sub.id }}">{% if sub.file %}<code>{{ sub.title }}</code>{% else %}{{ sub.title }}{% endif %}</a></li>
+                      {%- endfor %}
+                    </ul>
+                    {%- endif %}
+                  </li>
+                  {%- endfor %}
+                </ul>
+{%- endmacro %}
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -45,18 +62,13 @@
               {%- for r in releases %}
               <li>
                 <a href="/notes/{{ r.name }}/" {% if r.current %}aria-current="page"{% endif %}>{{ r.name }}</a>
-                {%- if r.sections %}
+                {%- if r.sections %}{{ contents(r.sections) }}{% endif %}
+                {%- if r.pages %}
                 <ul>
-                  {%- for s in r.sections %}
+                  {%- for p in r.pages %}
                   <li>
-                    <a href="#{{ s.id }}">{{ s.title }}</a>
-                    {%- if s.subs %}
-                    <ul>
-                      {%- for sub in s.subs %}
-                      <li><a href="#{{ sub.id }}">{% if sub.file %}<code>{{ sub.title }}</code>{% else %}{{ sub.title }}{% endif %}</a></li>
-                      {%- endfor %}
-                    </ul>
-                    {%- endif %}
+                    <a href="/notes/{{ r.name }}/{{ p.name }}" {% if p.current %}aria-current="page"{% endif %}>{{ p.name }}</a>
+                    {%- if p.sections %}{{ contents(p.sections) }}{% endif %}
                   </li>
                   {%- endfor %}
                 </ul>

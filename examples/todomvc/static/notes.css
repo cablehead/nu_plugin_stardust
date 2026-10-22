@@ -313,6 +313,19 @@ th, td {
 th:first-child, td:first-child {
   text-align: left;
 }
+/* A last column marked left in the markdown holds words, not numbers: they
+   wrap, at the body's line height, no narrower than 24ch (a narrow screen
+   scrolls the table instead). */
+td:last-child[style*="left"] {
+  min-width: 24ch;
+  white-space: normal;
+  line-height: var(--font-line-height-1);
+}
+/* Code in a cell: no chip, which the zebra rows would hide on every other row. */
+td code {
+  padding: 0;
+  background: none;
+}
 th {
   font-weight: var(--font-weight-semi-bold);
   border-bottom: var(--border-width-2) solid var(--neutral-5);
