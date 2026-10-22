@@ -4,41 +4,47 @@ description: "which stardust calls wait until something happens, and what async 
 ---
 # thinking about an async abi
 
-applies to [alpha-2610212237](../alpha-2610212237/).
+this note describes the C ABI in [alpha-2610212237](../alpha-2610212237/).
 
-the C ABI's calls, split by how you use them:
+it splits the calls into two groups:
 
-- [waits](#waits): you wait, possibly forever, until something happens. these are the ones an async client has to handle
-- [sync](#sync): does a bounded piece of work and returns. listed to check, then ignore
+- [calls that wait](#waits). these block until something happens, and that may never happen. an async client needs a way to wait for these without blocking a thread.
+- [calls that don't wait](#sync). these do their own work and return. an async client doesn't need anything new for them. they're listed so you can check each one belongs there.
 
-## waits {#waits}
+## calls that wait {#waits}
 
-### what you wait for {#wait-list}
+### what each call waits for {#wait-list}
 
-ready many times:
+these calls can become ready again and again, so you call them in a loop:
 
-| call | waits for | async today |
-|---|:---|:---|
-| `stardust_db_subscription_next` | a live query's next result | yes: `set_notify` |
-| `events.receive` | a published event | none: `maxWait` |
-| `events.accept` | an incoming call, as a worker | none: `maxWait` |
-| `events.read` | an exchange's next message, finish or cancel | none: `maxWait` |
+| call | waits for |
+|---|:---|
+| `stardust_db_subscription_next` | the next result of a live query |
+| `events.receive` | the next published event |
+| `events.accept` | the next call to a subject you registered as a worker |
+| `events.read` | the next message in an exchange, or the other side finishing or cancelling |
 
-ready once:
+only `stardust_db_subscription_next` can tell an async client when it's ready, through [`stardust_db_subscription_set_notify`](#notify). for the three `events` calls, you can only block, for up to `maxWait`.
 
-| call | waits for | async today |
-|---|:---|:---|
-| `stardust_db_indexes_sync` | background indexes built | none: `max_wait_ticks` |
-| `backups.sync` | every backup target confirmed | none: `maxWait` |
-| `sdk.sync` | the generated SDK published | none: `maxWait` |
-| `skills.sync` | the generated skills published | none: `maxWait` |
-| `stardust_db_open` | another process's file lock | none: `lock_timeout_ticks`, negative waits forever |
+these calls wait for one thing to finish, so you call them once:
 
-the events ops run through `stardust_db_plugin_call(db, "events", op, request, &result)`. a wait of 0, or none, checks once and reports `TIMEOUT`.
+| call | waits for |
+|---|:---|
+| `stardust_db_indexes_sync` | background indexes to finish building |
+| `backups.sync` | every backup target to confirm the latest commit |
+| `sdk.sync` | the generated SDK to be published |
+| `skills.sync` | the generated skills to be published |
+| `stardust_db_open` | another process to release the database's file lock |
 
-### the async mechanism today {#notify}
+none of these can tell an async client when it's ready. you can only block, for up to `maxWait`, or `max_wait_ticks` for `stardust_db_indexes_sync`, or `lock_timeout_ticks` for `stardust_db_open`, where a negative value blocks forever.
 
-only query subscriptions have one:
+the `events` operations are called through `stardust_db_plugin_call(db, "events", op, request, &result)`.
+
+if you pass a wait of 0, or leave it out, the call checks once and returns `TIMEOUT` straight away when nothing is ready.
+
+### how a live query tells you it's ready {#notify}
+
+this is the only async mechanism in the ABI today:
 
 ```c
 typedef void (*stardust_db_subscription_notify)(void *ctx);
@@ -46,24 +52,25 @@ uint32_t stardust_db_subscription_set_notify(stardust_db_subscription *sub, star
 uint32_t stardust_db_subscription_next(stardust_db_subscription *sub, int64_t max_wait_ticks, stardust_db_live_event *event);
 ```
 
-- `set_notify` once, before any `next`
-- `next(0)`: an event, or `TIMEOUT`, which arms one wake-up
-- `notify` may run on any thread, and must not call stardust
-- after `stardust_db_subscription_release` returns, no callback runs
+1. call `set_notify` once, before you call `next` for the first time.
+2. call `next` with a wait of 0. you get either a result, or `TIMEOUT`.
+3. a `TIMEOUT` means stardust will call your `notify` function once, when a result is ready. then go back to step 2.
 
-### what interrupts a wait {#interrupts}
+your `notify` function can be called on any thread. it must not call stardust. once `stardust_db_subscription_release` returns, `notify` won't be called again.
 
-| wait | interrupted by | returns |
+### what stops a wait early {#interrupts}
+
+| a wait in | ends early when you call | and returns |
 |---|:---|:---|
-| `stardust_db_subscription_next` | `stardust_db_subscription_cancel`, `_release` | `CANCELLED` |
-| `events.receive` | `events.unsubscribe`, `events.close_owner` | `CANCELLED` |
-| `events.accept` | `events.unregister`, `events.close_owner` | `CANCELLED` |
+| `stardust_db_subscription_next` | `stardust_db_subscription_cancel` or `stardust_db_subscription_release` | `CANCELLED` |
+| `events.receive` | `events.unsubscribe` or `events.close_owner` | `CANCELLED` |
+| `events.accept` | `events.unregister` or `events.close_owner` | `CANCELLED` |
 | `events.read` | `events.close_owner` | `CANCELLED` |
-| all of them | `stardust_db_close` | `CLOSED` |
+| any of the above | `stardust_db_close` | `CLOSED` |
 
-## sync {#sync}
+## calls that don't wait {#sync}
 
-each of these does its own work and returns. some take a while (a big query, a write waiting to be durable), but none waits on something that might not happen.
+each of these does its own work and returns. some can take a while, such as a big query, or a write that waits until it's safely on disk. but none of them waits for something that might never happen.
 
 ### setup {#setup}
 
@@ -75,13 +82,13 @@ each of these does its own work and returns. some take a while (a big query, a w
 
 ### reads {#reads}
 
-`stardust_db_read_entity`, `stardust_db_query_open`, `stardust_db_query_run`, `stardust_db_rows_next`, `stardust_db_rows_error`, `stardust_db_rows_release`, `stardust_db_query_error`, `stardust_db_query_release`, `stardust_db_definition_get`, `stardust_db_definition_list`, `stardust_db_plan` (status, history, explain), `objects.get`, `objects.lookup`, `objects.children`, `objects.path`, `objects.files`, `objects.manifest`, `blackholes.preview`, `blackholes.audit`, every `*.status`
+`stardust_db_read_entity`, `stardust_db_query_open`, `stardust_db_query_run`, `stardust_db_rows_next`, `stardust_db_rows_error`, `stardust_db_rows_release`, `stardust_db_query_error`, `stardust_db_query_release`, `stardust_db_definition_get`, `stardust_db_definition_list`, `stardust_db_plan` when it reads status, history or explain, `objects.get`, `objects.lookup`, `objects.children`, `objects.path`, `objects.files`, `objects.manifest`, `blackholes.preview`, `blackholes.audit`, and the `status` operation of every plugin
 
 ### writes {#writes}
 
-return once durable.
+a write returns once its changes are safely on disk.
 
-`stardust_db_merge_patch`, `stardust_db_mutation_open`, `stardust_db_mutation_run`, `stardust_db_mutation_error`, `stardust_db_mutation_release`, `stardust_db_bulk_begin`, `stardust_db_bulk_add`, `stardust_db_bulk_finish`, `stardust_db_bulk_abort`, `stardust_db_definition_patch`, `stardust_db_plan` (pin, unpin, replan, revert), `objects.create`, `objects.update`, `objects.move`, `objects.remove`, `blackholes.execute`
+`stardust_db_merge_patch`, `stardust_db_mutation_open`, `stardust_db_mutation_run`, `stardust_db_mutation_error`, `stardust_db_mutation_release`, `stardust_db_bulk_begin`, `stardust_db_bulk_add`, `stardust_db_bulk_finish`, `stardust_db_bulk_abort`, `stardust_db_definition_patch`, `stardust_db_plan` when it pins, unpins, replans or reverts, `objects.create`, `objects.update`, `objects.move`, `objects.remove`, `blackholes.execute`
 
 ### expressions {#expressions}
 
@@ -89,24 +96,24 @@ return once durable.
 
 ### plugin streams {#streams}
 
-`objects.upload` and `objects.open`, through `stardust_db_plugin_stream_open`, `_write`, `_read`, `_seek`, `_finish`, `_release`
+`objects.upload` and `objects.open` use these: `stardust_db_plugin_stream_open`, `stardust_db_plugin_stream_write`, `stardust_db_plugin_stream_read`, `stardust_db_plugin_stream_seek`, `stardust_db_plugin_stream_finish`, `stardust_db_plugin_stream_release`
 
-### events actions {#events}
+### events calls that act {#events}
 
-none of these waits: a full queue drops the delivery (`publish`) or cancels the exchange (`send`).
+none of these wait. when the other side's queue is full, `publish` drops the event, and `send` cancels the exchange.
 
 `events.open_owner`, `events.close_owner`, `events.publish`, `events.subscribe`, `events.unsubscribe`, `events.register`, `events.unregister`, `events.call`, `events.send`, `events.finish`, `events.cancel`
 
-### live query setup {#subscriptions}
+### starting and stopping a live query {#subscriptions}
 
 `stardust_db_query_subscribe`, `stardust_db_subscription_cancel`, `stardust_db_subscription_error`
 
-### to check {#check}
+### worth a second look {#check}
 
-sync, but they wait for other calls to finish:
+these don't wait for something to happen, but they do wait for other calls to finish:
 
 | call | waits for |
 |---|:---|
-| `stardust_db_close` | running calls; interrupts waits first |
-| `stardust_db_subscription_release` | running `next` calls and callbacks |
-| `stardust_db_plugin_call` | whatever the op does: a route, not a call of its own |
+| `stardust_db_close` | every call still running. it ends any waits first, so this doesn't hang |
+| `stardust_db_subscription_release` | any `next` call still running, and any `notify` call in progress |
+| `stardust_db_plugin_call` | it does whatever the operation you name does, so it waits only when that operation waits |
