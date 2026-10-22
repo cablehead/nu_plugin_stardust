@@ -7,6 +7,19 @@
 //             100
 //
 //   STARDUST_LICENSE=... MODE=new ./leak new.db
+//
+// What grows per new thread, as measured (alpha-2610171653 and
+// alpha-2610212237):
+//
+//   - an inline query (STARDUST_SOURCE_DOCUMENT): every one tried, with one
+//     clause or two, with or without orderBy, on an empty database or one
+//     with matching entities
+//   - a stored query (STARDUST_SOURCE_PATH) with orderBy, when its result
+//     is empty or it joins two clauses
+//
+// What stays flat: a stored query with one clause and matching rows, with or
+// without orderBy, and a stored query with two clauses and no orderBy on an
+// empty database.
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
