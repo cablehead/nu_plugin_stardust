@@ -107,13 +107,3 @@ none of these wait. when the other side's queue is full, `publish` drops the eve
 ### starting and stopping a live query {#subscriptions}
 
 `stardust_db_query_subscribe`, `stardust_db_subscription_cancel`, `stardust_db_subscription_error`
-
-### worth a second look {#check}
-
-these don't wait for something to happen, but they do wait for other calls to finish:
-
-| call | waits for |
-|---|:---|
-| `stardust_db_close` | every call still running. it ends any waits first, so this doesn't hang |
-| `stardust_db_subscription_release` | any `next` call still running, and any `notify` call in progress |
-| `stardust_db_plugin_call` | it does whatever the operation you name does, so it waits only when that operation waits |
