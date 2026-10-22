@@ -1,14 +1,31 @@
-{#- A notes page: title, and body, the HTML rendered from its markdown. code
-    is the stylesheet for highlighted code blocks. releases is the contents,
-    newest first: {name, current, sections: [{title, id, subs}]}, subs being
-    [{title, id, file}] (file: true for included code), with sections only
-    for the page being read. index is true on the notes index. -#}
+{#- A release's notes page: title, description, url and image (absolute,
+    or none) for its meta tags, and body, the HTML rendered from its
+    markdown. code is the stylesheet for highlighted code blocks. releases
+    is the contents, newest first: {name, current, sections: [{title, id,
+    subs}]}, subs being [{title, id, file}] (file: true for included code),
+    with sections only for the page being read. -#}
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title }}</title>
+    {%- if description %}
+    <meta name="description" content="{{ description }}">
+    {%- endif %}
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="{{ url }}">
+    <meta property="og:title" content="{{ title }}">
+    {%- if description %}
+    <meta property="og:description" content="{{ description }}">
+    {%- endif %}
+    {%- if image %}
+    <meta property="og:image" content="{{ image }}">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:image" content="{{ image }}">
+    {%- endif %}
     <script>
       if (window.matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.classList.add('dark');
     </script>
@@ -23,7 +40,7 @@
         <ul>
           <li><a href="/">todomvc</a></li>
           <li>
-            <a href="/notes/" {% if index %}aria-current="page"{% endif %}>notes</a>
+            <a href="/notes/">notes</a>
             <ul>
               {%- for r in releases %}
               <li>

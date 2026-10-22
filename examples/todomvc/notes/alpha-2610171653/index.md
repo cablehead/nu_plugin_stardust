@@ -1,4 +1,5 @@
 ---
+description: "per-thread arena: 4 MB per thread, never freed. schema clause leak: about 0.25 MB per commit, never freed."
 # Each file beside this page, shown at the end of the section with that id.
 code:
   leak.c: per-thread

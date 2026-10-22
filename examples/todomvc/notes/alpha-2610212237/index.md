@@ -1,3 +1,12 @@
+---
+description: "per-thread arena: open, 4 MB to 0.3 MB per thread. schema clause leak: fixed."
+# The repro code, from the release where it was written, shown at the end of
+# the section with that id.
+code_from: ../alpha-2610171653
+code:
+  leak.c: per-thread
+  subcommit.c: schema-clause
+---
 # stardust alpha-2610212237
 
 - [per-thread arena](#per-thread): open, 4 MB to 0.3 MB per thread
@@ -9,8 +18,9 @@
 
 ### per-thread arena {#per-thread}
 
-resident size, [`leak.c`](../alpha-2610171653/#leak-c): a new thread per query ([`MODE=new`](../alpha-2610171653/#leak-c)), and a 4-thread pool ([`MODE=pool`](../alpha-2610171653/#leak-c)).
-before is [alpha-2610171653](../alpha-2610171653/#per-thread).
+each thread that calls stardust leaves memory behind that's never freed. on
+this release it's about 0.3 MB per thread, down from 4 MB. a fixed pool of
+threads stays flat.
 
 | queries | now | before | now, pool |
 |---|---|---|---|
@@ -24,8 +34,9 @@ before is [alpha-2610171653](../alpha-2610171653/#per-thread).
 
 ### schema clause leak {#schema-clause}
 
-resident size, [`subcommit.c`](../alpha-2610171653/#subcommit-c): with the schema clause, and without it ([`SCHEMA=0`](../alpha-2610171653/#subcommit-c)).
-before is [alpha-2610171653](../alpha-2610171653/#schema-clause).
+a subscription to a query with a schema clause leaked memory on every
+commit, and kept it after the subscription was released. on this release it
+stays flat.
 
 | | now | before | now, no clause |
 |---|---|---|---|

@@ -255,14 +255,6 @@ def releases [dir: string]: nothing -> list<string> {
   ls $dir | where type == dir | get name | path basename | sort --reverse
 }
 
-# alpha-2610212237 -> 2026-10-21 22:37
-def release-date [release: string]: nothing -> string {
-  $release
-  | parse -r '(?<y>\d\d)(?<m>\d\d)(?<d>\d\d)(?<h>\d\d)(?<min>\d\d)$'
-  | first
-  | $"20($in.y)-($in.m)-($in.d) ($in.h):($in.min)"
-}
-
 # A notes page, read with from md: meta, its frontmatter; title, its first
 # heading; intro, the markdown before the first section; and blocks, one per
 # second- or third-level heading, with its title, id ({#id} at the end of
@@ -341,28 +333,35 @@ def note-contents [dir: string, current: string]: nothing -> list<record> {
 
 const copy_icon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
 
-# A file beside a notes page, as an open block of highlighted code, its
-# id the file name with . as - (leak.c is #leak-c).
-def code-file [dir: string, file: string]: nothing -> string {
+# A file in dir, as an open block of highlighted code, its id the file name
+# with . as - (leak.c is #leak-c). from is the release the file comes from
+# when it isn't this page's, which the summary links to.
+def code-file [dir: string, file: string, from?: string]: nothing -> string {
   let code = open --raw ($dir | path join $file) | decode utf-8
   let lang = $file | path parse | get extension
   let lines = $code | lines | length
   let body = $code | .highlight $lang | get __html
-  $"<details open id=\"($file | str replace -a '.' '-')\"><summary><code>($file)</code>, ($lines) lines</summary>\n<pre><code class=\"language-($lang)\">($body)</code></pre>\n</details>"
+  let id = $file | str replace -a '.' '-'
+  let same = if $from == null { "" } else { $", the same as in <a href=\"../($from)/#($id)\">($from)</a>" }
+  $"<details open id=\"($id)\"><summary><code>($file)</code>, ($lines) lines($same)</summary>\n<pre><code class=\"language-($lang)\">($body)</code></pre>\n</details>"
 }
 
 # A page read by note-read, as HTML: each part through .md, each block
 # followed by the code meta.code ends it with, and a copy button on every
-# code block.
+# code block. The code is beside the page, or in meta.code_from, a release
+# directory relative to it.
 def note-html [dir: string]: record -> string {
   let page = $in
   let code = $page.meta.code? | default {} | transpose file id
+  let from = $page.meta.code_from?
+  let code_dir = if $from == null { $dir } else { $dir | path join $from | path expand }
+  let release = if $from == null { null } else { $code_dir | path basename }
   $page.blocks
   | each {|b|
     $code
     | where id == $b.id
     | get file
-    | each { code-file $dir $in }
+    | each { code-file $code_dir $in $release }
     | prepend ($b.markdown | .md | get __html)
     | str join "\n"
   }
@@ -372,19 +371,32 @@ def note-html [dir: string]: record -> string {
   | str replace -a '</pre>' '</pre></figure>'
 }
 
-# A markdown page with the notes contents beside it. dir holds the files its
-# meta.code names.
-def note-page [note: any, code_css: string, rev: string, contents: list, current: string, dir: string]: string -> string {
+# A release's notes page, with the notes contents beside it. dir holds the
+# page and the files its meta.code names; url is the page's own, absolute,
+# for its og tags. Its og image is og.png beside it, if there is one, and its
+# description meta.description.
+def note-page [note: any, code_css: string, rev: string, contents: list, dir: string, url: string]: string -> string {
   let page = note-read
   {
     title: $page.title
+    description: ($page.meta.description? | default "")
+    url: $url
+    image: (if ($dir | path join og.png | path exists) { $"($url)og.png?v=($rev)" })
     body: ($page | note-html $dir)
     code: $code_css
     rev: $rev
     releases: $contents
-    index: ($current == "")
   }
   | .mj render $note
+}
+
+# This site's URL, for og tags, which must be absolute: https, unless this is
+# a local run. X-Forwarded-Proto can't be trusted for this: behind a chain of
+# proxies the last hop may be plain http.
+def site-url [req: record]: nothing -> string {
+  let host = $req.headers.host
+  let scheme = if $host =~ '^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$' { "http" } else { "https" }
+  $"($scheme)://($host)/"
 }
 
 def redirect [to: string] {
@@ -512,12 +524,7 @@ def match-notes-route [dir: string] {
 
     (
       route {method: GET path: "/"} {|req ctx|
-        # og:image must be absolute: https, unless this is a local run.
-        # X-Forwarded-Proto can't be trusted for this: behind a chain of
-        # proxies the last hop may be plain http.
-        let host = $req.headers.host
-        let scheme = if $host =~ '^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$' { "http" } else { "https" }
-        {datastar: $DATASTAR_JS_PATH url: $"($scheme)://($host)/" rev: $rev} | .mj render $index
+        {datastar: $DATASTAR_JS_PATH url: (site-url $req) rev: $rev} | .mj render $index
       }
     )
 
@@ -526,21 +533,15 @@ def match-notes-route [dir: string] {
     (
       route (match-notes-route $notes_dir) {|req ctx|
         if $ctx.release == "" {
-          if $req.path == "/notes" {
-            redirect "/notes/"
-          } else {
-            releases $notes_dir
-            | each {|r| $"- [($r)]\(($r)/) (release-date $r)" }
-            | prepend ["# notes on stardust" "" "one page per stardust release this site has run on, newest first." ""]
-            | str join "\n"
-            | note-page $note $code_css $rev (note-contents $notes_dir "") "" $notes_dir
-          }
+          redirect $"/notes/(releases $notes_dir | first)/"
         } else if not $ctx.slash {
           redirect $"/notes/($ctx.release)/"
         } else if $ctx.file == "" {
           open --raw ($notes_dir | path join $ctx.release index.md)
           | decode utf-8
-          | note-page $note $code_css $rev (note-contents $notes_dir $ctx.release) $ctx.release ($notes_dir | path join $ctx.release)
+          | note-page $note $code_css $rev (note-contents $notes_dir $ctx.release) ($notes_dir | path join $ctx.release) $"(site-url $req)notes/($ctx.release)/"
+        } else if ($ctx.file | str ends-with ".png") {
+          .static $here $req.path
         } else {
           open --raw ($notes_dir | path join $ctx.release $ctx.file)
           | decode utf-8
