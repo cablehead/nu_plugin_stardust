@@ -65,7 +65,7 @@ STARDUST_LICENSE=... ./subcommit new.db
 
 resident size:
 
-| | with schema clause | [`SCHEMA=0`](#subcommit-c) |
+| | with the schema clause | without it |
 |---|---|---|
 | round 1: start | 16 MB | 16 MB |
 | 100 commits | 50 MB | 25 MB |
