@@ -1,0 +1,185 @@
+/*
+ * notes.css - the /notes pages: markdown rendered to raw tags, styled here
+ * once, with no classes. Every value is a Stellar token (stellar.css). Light
+ * and dark come from stellar's :root.dark overrides; the page sets `dark` on
+ * <html> to match the system.
+ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  padding: var(--size-3) var(--size-5) var(--size-9);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-0);
+  line-height: var(--font-line-height-1);
+  background: var(--neutral-1);
+  color: var(--neutral-1-on);
+  -webkit-text-size-adjust: 100%;
+}
+
+/* The reading column. 68ch: a comfortable measure for prose, wide enough
+   for the repro tables. */
+main {
+  max-width: 68ch;
+  margin: 0 auto;
+}
+
+nav {
+  font-size: var(--font-size--1);
+  line-height: var(--font-line-height--1);
+  color: var(--neutral-1-dim);
+  margin-bottom: var(--size-5);
+}
+
+/* ---- headings ---------------------------------------------------- */
+
+/* Stellar's line-height tokens are absolute rems tuned to body sizes, so
+   none fit display text; 1.1 is the shared display ratio, as on
+   understand-stellar. */
+h1, h2, h3, h4 {
+  line-height: 1.1;
+  text-wrap: balance;
+  color: var(--neutral-1-on);
+}
+
+h1 {
+  font-size: var(--font-size-6);
+  font-weight: var(--font-weight-extra-bold);
+  letter-spacing: var(--font-letter-spacing--2);
+  margin: 0 0 var(--size-3);
+}
+
+h2 {
+  font-size: var(--font-size-3);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--font-letter-spacing--1);
+  margin: var(--size-6) 0 var(--size-1);
+  padding-bottom: var(--size--1);
+  border-bottom: var(--border-width-2) solid var(--neutral-4);
+}
+
+h3 {
+  font-size: var(--font-size-1);
+  font-weight: var(--font-weight-semi-bold);
+  margin: var(--size-4) 0 var(--size-0);
+}
+
+/* ---- text -------------------------------------------------------- */
+
+p, ul, ol, blockquote, pre, table {
+  margin: 0 0 var(--size-2);
+}
+
+a {
+  color: var(--primary-7);
+  text-decoration-thickness: from-font;
+}
+a:hover {
+  color: var(--primary-9);
+}
+
+strong {
+  font-weight: var(--font-weight-semi-bold);
+}
+
+ul, ol {
+  padding-left: var(--size-3);
+}
+li + li {
+  margin-top: var(--size--2);
+}
+li::marker {
+  color: var(--neutral-1-dim);
+}
+
+blockquote {
+  padding: var(--size--1) var(--size-2);
+  border-left: var(--border-width-3) solid var(--primary-5);
+  background: var(--neutral-2);
+  color: var(--neutral-2-on);
+}
+blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+hr {
+  border: 0;
+  border-top: var(--border-width-1) solid var(--neutral-4);
+  margin: var(--size-5) 0;
+}
+
+/* ---- code -------------------------------------------------------- */
+
+/* The size scale starts too large for a chip's sides; the border widths are
+   the small steps. */
+code {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-0);
+  padding: 0 var(--border-width-4);
+  border-radius: var(--border-radius-1);
+  background: var(--neutral-3);
+  color: var(--neutral-3-on);
+}
+
+pre {
+  padding: var(--size-1) var(--size-2);
+  border: var(--border-width-1) solid var(--neutral-4);
+  border-radius: var(--border-radius-2);
+  background: var(--neutral-2);
+  color: var(--neutral-2-on);
+  line-height: var(--font-line-height-0);
+  overflow-x: auto;
+}
+pre code {
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+}
+
+/* ---- tables ------------------------------------------------------ */
+
+/* A wide table scrolls inside itself, not the page. Numbers line up on the
+   right; the first column labels the row. */
+table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+/* No vertical padding: the size scale starts at about 12px, too tall for a
+   row. The tallest line height spaces rows instead. */
+th, td {
+  padding: 0 var(--size-0);
+  line-height: var(--font-line-height-4);
+  border-bottom: var(--border-width-1) solid var(--neutral-4);
+  text-align: right;
+  white-space: nowrap;
+}
+th:first-child, td:first-child {
+  text-align: left;
+}
+th {
+  font-weight: var(--font-weight-semi-bold);
+  border-bottom: var(--border-width-2) solid var(--neutral-5);
+}
+tbody tr:hover {
+  background: var(--neutral-2);
+}
+
+@media (min-width: 48rem) {
+  body {
+    padding: var(--size-6) var(--size-4) var(--size-9);
+  }
+}

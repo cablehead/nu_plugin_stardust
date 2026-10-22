@@ -50,12 +50,12 @@ def plugin-pid []: nothing -> any {
   | get pid.0?
 }
 
-# If the plugin dies (Stardust leaks memory per calling thread, so it can be
-# OOM-killed), nu starts a new one, but $db belongs to the old one and every
-# call on it fails from then on. Each request checks the plugin is still
-# there; if it isn't, the server kills itself so its supervisor starts it
-# again. SIGKILL, not exit: exit only ends the request, and a supervisor
-# that restarts on failure counts SIGTERM as a clean stop.
+# If the plugin dies (out of memory, say), nu starts a new one, but $db
+# belongs to the old one and every call on it fails from then on. Each
+# request checks the plugin is still there; if it isn't, the server kills
+# itself so its supervisor starts it again. SIGKILL, not exit: exit only
+# ends the request, and a supervisor that restarts on failure counts SIGTERM
+# as a clean stop.
 let plugin = plugin-pid
 # Passes its input, the request body, through.
 def check-plugin [plugin] {
@@ -68,7 +68,6 @@ def check-plugin [plugin] {
 
 # A todo is exactly these two fields. Queries select todos with
 # [schema todo ?e], and mutations that do are checked against it.
-# todos/list doesn't: see there.
 stardust define $db schemas todo '{
   type                 object
   properties           {text {type string minLength 1} completed {type boolean}}
@@ -80,19 +79,18 @@ stardust define $db schemas todo '{
 # a mutation's patch is checked with the defaults filled in, and
 # {completed null} would delete the field.
 
-# The read model every viewer sees: all todos, oldest first. It selects them
-# by their two fields, not [schema todo ?e]: only todos have both, and a
-# subscription to a query with a schema clause grows by about 64 bytes per
-# todo on every commit, never returned (see the README).
+# The read model every viewer sees: all todos, oldest first.
 stardust define $db queries todos/list '{
   find    [?e ?text ?completed]
-  where   [[?e text ?text] [?e completed ?completed]]
+  where   [[schema todo ?e] [?e text ?text] [?e completed ?completed]]
   orderBy [?e]
 }' | ignore
 
-# todos/list as it was at transaction ?at, for time travel.
+# todos/list as it was at transaction ?at, for time travel. Stardust refuses
+# an asOf parameter that defaults to null, so ?at defaults to 1, the first
+# transaction; every caller passes it.
 stardust define $db queries todos/list-at '{
-  parameters {at null}
+  parameters {at 1}
   find       [?e ?text ?completed]
   where      [[schema todo ?e] [?e text ?text] [?e completed ?completed]]
   orderBy    [?e]
@@ -244,6 +242,62 @@ let rev = glob ($here | path join static "*")
 let index = .mj compile ($here | path join templates/index.html)
 let section = .mj compile ($here | path join templates/todos.html)
 
+# Notes on Stardust, one page per release: notes/<release>/index.md, and the
+# files it links to beside it. Pages end in /, so relative links work the
+# same here as on GitHub.
+let note = .mj compile ($here | path join templates/note.html)
+# Highlighted code: OneHalf, dark or light to match the page.
+let code_css = $"html.dark {(.highlight theme OneHalfDark)}\nhtml:not\(.dark) {(.highlight theme OneHalfLight)}"
+let notes_dir = $here | path join notes
+
+# The releases with notes, newest first.
+def releases [dir: string]: nothing -> list<string> {
+  ls $dir | where type == dir | get name | path basename | sort --reverse
+}
+
+# alpha-2610212237 -> 2026-10-21 22:37
+def release-date [release: string]: nothing -> string {
+  $release
+  | parse -r '(?<y>\d\d)(?<m>\d\d)(?<d>\d\d)(?<h>\d\d)(?<min>\d\d)$'
+  | first
+  | $"20($in.y)-($in.m)-($in.d) ($in.h):($in.min)"
+}
+
+# A markdown page, titled by its first heading.
+def note-page [note: any, code_css: string, rev: string]: string -> string {
+  let markdown = $in
+  let title = $markdown | lines | where { str starts-with "# " } | first | str substring 2..
+  {title: $title body: ($markdown | .md | get __html) code: $code_css rev: $rev} | .mj render $note
+}
+
+def redirect [to: string] {
+  null | metadata set { merge {'http.response': {status: 302 headers: {Location: $to}}} }
+}
+
+# A route test for /notes paths: /notes, /notes/, /notes/<release>,
+# /notes/<release>/ and /notes/<release>/<file>, for a release and file that
+# exist. ctx has release and file, either of which may be empty, and slash,
+# whether a release came with its trailing /.
+def match-notes-route [dir: string] {
+  {|req|
+    if $req.method == GET {
+      $req.path
+      | parse -r '^/notes(?:/(?<release>[^/]*)(?<slash>/?)(?<file>[^/]*))?$'
+      | get 0?
+      | and-then {
+        let m = $in
+        let release = $m.release? | default ""
+        let file = $m.file? | default ""
+        let known = $release == "" or ($release in (releases $dir))
+        let found = $file == "" or ($known and ($file in (ls ($dir | path join $release) | get name | path basename)))
+        if $known and $found and ($file == "" or $file != "index.md") {
+          {release: $release file: $file slash: ($m.slash? == "/")}
+        }
+      }
+    }
+  }
+}
+
 {|req|
   check-plugin $plugin
   | dispatch $req [
@@ -351,6 +405,30 @@ let section = .mj compile ($here | path join templates/todos.html)
     )
 
     (route {method: GET path-matches: "/static/:file"} {|req ctx| .static $here $req.path })
+
+    (
+      route (match-notes-route $notes_dir) {|req ctx|
+        if $ctx.release == "" {
+          if $req.path == "/notes" {
+            redirect "/notes/"
+          } else {
+            releases $notes_dir
+            | each {|r| $"- [($r)]\(($r)/) (release-date $r)" }
+            | prepend ["# notes on stardust" "" "one page per stardust release this site has run on, newest first." ""]
+            | str join "\n"
+            | note-page $note $code_css $rev
+          }
+        } else if not $ctx.slash {
+          redirect $"/notes/($ctx.release)/"
+        } else if $ctx.file == "" {
+          open --raw ($notes_dir | path join $ctx.release index.md) | decode utf-8 | note-page $note $code_css $rev
+        } else {
+          open --raw ($notes_dir | path join $ctx.release $ctx.file)
+          | decode utf-8
+          | metadata set { merge {'http.response': {headers: {"Content-Type": "text/plain; charset=utf-8"}}} }
+        }
+      }
+    )
 
     (route true {|req ctx| not-found })
   ]

@@ -5,7 +5,7 @@
 
 use std/assert
 
-const data = path self ../stardust-alpha-2610171653/abi/examples/data
+const data = path self ../stardust-alpha-2610212237/abi/examples/data
 
 def main [] {
     print $"license: (stardust license | select active failure name license expires)"
@@ -97,7 +97,6 @@ def main [] {
     assert ("reactors" in (stardust plugins).name)
     let rdb = stardust open $"($dir)/reactors.db" --plugins {reactors: {}}
     assert equal (stardust plugin-call $rdb reactors status).enabled true
-    stardust plugin-call $rdb reactors sync {maxWait: 1sec}
     assert error { stardust plugin-call $rdb backups status }
     stardust close $rdb
     print "plugins: ok"

@@ -12,7 +12,7 @@ nu-plugin = "=0.116.0"
 nu-protocol = { version = "=0.116.0", features = ["plugin"] }
 # The static feature links libstardust_full.a: one self-contained binary,
 # so nu can launch it without LD_LIBRARY_PATH.
-stardust = { path = "../stardust-alpha-2610171653/abi/bindings/rust", features = ["static"] }
+stardust = { path = "../stardust-alpha-2610212237/abi/bindings/rust", features = ["static"] }
 chrono = "0.4"
 serde = { version = "1", features = ["derive"] }
 typetag = "0.2"

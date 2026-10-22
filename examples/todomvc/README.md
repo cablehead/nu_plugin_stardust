@@ -92,6 +92,7 @@ holds it, and Stardust refuses with `locked`.
 - `DELETE /{id}` - delete a todo
 - `DELETE /completed` - delete the completed todos
 - `GET /static/*` - files in `static/`
+- `GET /notes` - notes on Stardust, one page per release, from `notes/`
 
 `{id}` is the todo's Stardust entity id; an id that isn't a todo gets 404.
 The PATCH body is the state to set, not a toggle, so repeating a request is
@@ -104,8 +105,6 @@ harmless. The page sends the opposite of the state it rendered.
 - `schemas todo`: `{text, completed}`, a non-empty string and a boolean,
   nothing else.
 - `queries todos/list`: every todo, oldest first. Viewers subscribe to it.
-  It selects todos by their two fields instead of `[schema todo ?e]`; see
-  the notes.
 - `queries todos/list-at`: the same, as of transaction `?at`.
 - `queries todos/get`: one todo, by `?id`. Delete checks it.
 - `queries todos/completed`: the completed todos. Clear-completed reads it.
@@ -125,8 +124,10 @@ patch has a `#_tx` at all.
 A `null` parameter default makes `?id` required. `?completed` can't default
 to `null`: a mutation's patch is checked with its defaults filled in, and
 `{completed null}` would delete the field. The routes require it instead.
+`?at` can't default to `null` either: Stardust refuses an `asOf` parameter
+without a positive default, so it defaults to 1, and every caller passes it.
 
-The other queries and both mutations select todos with `[schema todo ?e]`, so a mutation that
+Each query and mutation selects todos with `[schema todo ?e]`, so a mutation that
 would leave a todo off-schema is refused with `schema_violation`, a 500. The
 page only sends booleans, so only a hand-made request gets one.
 
@@ -141,19 +142,12 @@ checks the id is a todo (`todos/get`) before deleting.
   which ends it. See the plugin README's known limitations.
 - http-nu interrupts a disconnected viewer's request and logs it as an error
   (`Operation interrupted`). Other viewers are unaffected.
-- Stardust keeps a 4 MB scratch arena for each thread that calls into it,
-  and doesn't reclaim it when the thread exits
-  ([gist](https://gist.github.com/cablehead/b715456696e01a8b6f77a2788535247a)).
-  nu runs plugin calls on new threads, so the plugin makes every Stardust call
-  from a fixed pool of threads instead (`src/pool.rs`).
-- While a subscription to a query with a `[schema ...]` clause is open, each
-  commit grows the plugin by roughly 64 bytes per matching entity, which is
-  not returned
-  ([gist](https://gist.github.com/cablehead/8b9f2f1415a4b1447388c2be7c3692e7)).
-  A plain query with the clause doesn't. So `todos/list`, the one query
-  viewers subscribe to, has no schema clause.
-- The plugin can still die, from a leak not found yet or otherwise.
-  nu then starts a new plugin, but `$db` belongs to the old one and every call
-  on it fails. So each request checks that the plugin found at startup is still
-  in `/proc`. If it isn't, the server sends itself SIGKILL so its supervisor
-  starts it again (`exit` would only end the request).
+- Stardust keeps memory for each thread that calls into it, and doesn't
+  reclaim it when the thread exits (see [`notes/`](notes)). nu runs plugin
+  calls on new threads, so the plugin makes every Stardust call from a fixed
+  pool of threads instead (`src/pool.rs`).
+- If the plugin dies, out of memory for instance, nu starts a new plugin,
+  but `$db` belongs to the old one and every call on it fails. So each
+  request checks that the plugin found at startup is still in `/proc`. If it
+  isn't, the server sends itself SIGKILL so its supervisor starts it again
+  (`exit` would only end the request).

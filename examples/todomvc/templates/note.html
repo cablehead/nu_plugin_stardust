@@ -1,0 +1,22 @@
+{#- A notes page: title, and body, the HTML rendered from its markdown. code
+    is the stylesheet for highlighted code blocks. -#}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <script>
+      if (window.matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.classList.add('dark');
+    </script>
+    <link rel="stylesheet" href="/static/stellar.css?v={{ rev }}">
+    <link rel="stylesheet" href="/static/notes.css?v={{ rev }}">
+    <style>{{ code | safe }}</style>
+  </head>
+  <body>
+    <main>
+      <nav><a href="/">todomvc</a> / <a href="/notes/">notes</a></nav>
+      {{ body | safe }}
+    </main>
+  </body>
+</html>

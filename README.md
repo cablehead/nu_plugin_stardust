@@ -6,7 +6,7 @@ run queries as streaming nu tables, and follow live query results, all from
 the nu prompt.
 
 This is a prototype against Stardust's Rust binding (release
-`alpha-2610171653`). It doesn't include Stardust itself: you need your own
+`alpha-2610212237`). It doesn't include Stardust itself: you need your own
 release download and license token.
 
 ## Requirements
@@ -17,11 +17,11 @@ release download and license token.
 - A Stardust release for your platform, extracted **next to this repo**:
 
   ```
-  ~/stardust-alpha-2610171653/   # the release
+  ~/stardust-alpha-2610212237/   # the release
   ~/nu_plugin_stardust/          # this repo
   ```
 
-  `Cargo.toml` points at `../stardust-alpha-2610171653/abi/bindings/rust`.
+  `Cargo.toml` points at `../stardust-alpha-2610212237/abi/bindings/rust`.
   Edit that path for another release or location.
 - A Stardust license token (the `v4.public.…` text from your account page).
 
@@ -185,7 +185,6 @@ stardust plugins | select name description
 
 let db = stardust open ~/people.db --plugins {reactors: {}}
 stardust plugin-call $db reactors status
-stardust plugin-call $db reactors sync {maxWait: 5sec}
 ```
 
 ### Values
@@ -211,6 +210,9 @@ Entity references stay as `{#link id}` records.
   `engine.set_gc_disabled(true)`, and re-enables it when the last one closes.
 - **Threads.** In this release the database and its handles are `Send + Sync`,
   so one plugin process serves every call. All jobs in a nu session share it.
+  Every call into Stardust runs on a small fixed pool of threads
+  (`src/pool.rs`): Stardust keeps memory for each thread that calls it, even
+  after the thread exits, and nu runs plugin calls on new threads.
 - **Subscriptions.** The binding's `next` is async; nu streams are iterators.
   So the stream polls `next().await` on its own thread, parking until
   Stardust wakes it.
