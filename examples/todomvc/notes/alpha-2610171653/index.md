@@ -1,41 +1,27 @@
 ---
-description: "per-thread arena: 4 MB per thread, never freed. schema clause leak: about 0.25 MB per commit, never freed."
+description: "schema clause leak: about 0.25 MB per commit, never freed. per-thread arena: unconfirmed, still working on a repro."
 # Each file beside this page, shown at the end of the section with that id.
 code:
-  leak.c: per-thread
   subcommit.c: schema-clause
 ---
 # stardust alpha-2610171653
 
-- [per-thread arena](#per-thread): 4 MB per thread, never freed. the plugin
-  works around it with a fixed thread pool
+- [per-thread arena](#per-thread): unconfirmed, still working on a repro. the
+  plugin uses a fixed thread pool
 - [schema clause leak](#schema-clause): about 0.25 MB per commit, never
   freed. fixed in [alpha-2610212237](../alpha-2610212237/#schema-clause)
 
 ## per-thread arena {#per-thread}
 
-each os thread that calls into stardust gets its own 4 MB scratch arena,
-reused by later calls on that thread. when the thread exits, its arena isn't
-freed or given to the next thread, and there's no call to release it. so
-memory grows with the number of distinct threads that ever called in, not
-with the number of calls.
+unconfirmed, still working on a repro. memory grew with every new thread
+that called stardust, and wasn't freed when the thread exited. a fixed pool
+of threads stayed flat. but these numbers come from one database, a copy of
+this site's: with a fresh database, neither this release nor the next one
+grows.
 
-[`leak.c`](#leak-c) runs the same 400 queries two ways, each in a fresh
-process:
+resident size, 400 queries on that database:
 
-- [`MODE=new`](#leak-c): each query on a new thread, joined before the next starts.
-  one thread is alive at a time.
-- [`MODE=pool`](#leak-c): on 4 threads that live for the whole run.
-
-```
-gcc -O2 -I$STARDUST/abi leak.c -L$STARDUST/lib/linux_amd64 -lstardust -lpthread \
-  -Wl,-rpath,$STARDUST/lib/linux_amd64 -o leak
-STARDUST_LICENSE=... MODE=new ./leak todos.db   # any db with a stored query at todos/list
-```
-
-resident size:
-
-| queries | [`MODE=new`](#leak-c) | [`MODE=pool`](#leak-c) |
+| queries | a new thread each | 4 reused threads |
 |---|---|---|
 | start | 13 MB | 13 MB |
 | 100 | 359 MB | 33 MB |

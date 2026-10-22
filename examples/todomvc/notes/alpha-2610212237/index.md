@@ -1,28 +1,29 @@
 ---
-description: "per-thread arena: open, 4 MB to 0.3 MB per thread. schema clause leak: fixed."
+description: "schema clause leak: fixed. per-thread arena: unconfirmed, still working on a repro."
 # The repro code, from the release where it was written, shown at the end of
 # the section with that id.
 code_from: ../alpha-2610171653
 code:
-  leak.c: per-thread
   subcommit.c: schema-clause
 ---
 # stardust alpha-2610212237
 
-- [per-thread arena](#per-thread): open, 4 MB to 0.3 MB per thread
+- [per-thread arena](#per-thread): unconfirmed, still working on a repro
 - [schema clause leak](#schema-clause): fixed
 - an asOf parameter can't default to null: [`todos/list-at`](https://github.com/cablehead/nu_plugin_stardust/blob/f5e0c7a/examples/todomvc/serve.nu#L92) defaults ?at to 1
 - [`reactors sync`](https://github.com/cablehead/nu_plugin_stardust/commit/e168e50) is gone
 
-## open {#open}
+## unconfirmed {#unconfirmed}
 
 ### per-thread arena {#per-thread}
 
-each thread that calls stardust leaves memory behind that's never freed. on
-this release it's about 0.3 MB per thread, down from 4 MB. a fixed pool of
-threads stays flat.
+unconfirmed, still working on a repro. these numbers come from one
+database, a copy of this site's: with a fresh database, neither release
+grows per thread. the plugin keeps its fixed thread pool.
 
-| queries | now | before | now, pool |
+resident size, 400 queries on that database:
+
+| queries | now | before | now, 4 reused threads |
 |---|---|---|---|
 | start | 17 MB | 13 MB | 17 MB |
 | 100 | 47 MB | 359 MB | 37 MB |
