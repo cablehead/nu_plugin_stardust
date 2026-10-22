@@ -1,5 +1,8 @@
 {#- A notes page: title, and body, the HTML rendered from its markdown. code
-    is the stylesheet for highlighted code blocks. -#}
+    is the stylesheet for highlighted code blocks. releases is the contents,
+    newest first: {name, current, sections: [{title, id, subs}]}, subs being
+    [{title, id, file}] (file: true for included code), with sections only
+    for the page being read. index is true on the notes index. -#}
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -14,9 +17,79 @@
     <style>{{ code | safe }}</style>
   </head>
   <body>
+    <nav aria-label="contents">
+      <details>
+        <summary>contents</summary>
+        <ul>
+          <li><a href="/">todomvc</a></li>
+          <li>
+            <a href="/notes/" {% if index %}aria-current="page"{% endif %}>notes</a>
+            <ul>
+              {%- for r in releases %}
+              <li>
+                <a href="/notes/{{ r.name }}/" {% if r.current %}aria-current="page"{% endif %}>{{ r.name }}</a>
+                {%- if r.sections %}
+                <ul>
+                  {%- for s in r.sections %}
+                  <li>
+                    <a href="#{{ s.id }}">{{ s.title }}</a>
+                    {%- if s.subs %}
+                    <ul>
+                      {%- for sub in s.subs %}
+                      <li><a href="#{{ sub.id }}">{% if sub.file %}<code>{{ sub.title }}</code>{% else %}{{ sub.title }}{% endif %}</a></li>
+                      {%- endfor %}
+                    </ul>
+                    {%- endif %}
+                  </li>
+                  {%- endfor %}
+                </ul>
+                {%- endif %}
+              </li>
+              {%- endfor %}
+            </ul>
+          </li>
+        </ul>
+      </details>
+    </nav>
     <main>
-      <nav><a href="/">todomvc</a> / <a href="/notes/">notes</a></nav>
       {{ body | safe }}
     </main>
+    <script>
+      // The contents is a sidebar when the page is wide, always open, and a
+      // collapsed <details> at the top when narrow, closing again once a
+      // section is picked.
+      const contents = document.querySelector('nav details');
+      const wide = window.matchMedia('(min-width: 64rem)');
+      const fit = () => { contents.open = wide.matches; };
+      wide.addEventListener('change', fit);
+      fit();
+      contents.addEventListener('click', (e) => {
+        if (!wide.matches && e.target.closest('a')) contents.open = false;
+      });
+
+      // Copy buttons, one per code block (figure > button): copy the code,
+      // show a check for a moment. If the clipboard is refused, select the
+      // code so it can be copied by hand.
+      const check = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+      document.addEventListener('click', (e) => {
+        const button = e.target.closest('figure > button');
+        if (!button) return;
+        const code = button.parentElement.querySelector('pre code') || button.parentElement.querySelector('pre');
+        const icon = button.innerHTML;
+        const done = () => {
+          button.innerHTML = check;
+          button.dataset.copied = '';
+          button.setAttribute('aria-label', 'copied');
+          setTimeout(() => {
+            button.innerHTML = icon;
+            delete button.dataset.copied;
+            button.setAttribute('aria-label', 'copy');
+          }, 1500);
+        };
+        navigator.clipboard.writeText(code.textContent).then(done, () => {
+          getSelection().selectAllChildren(code);
+        });
+      });
+    </script>
   </body>
 </html>

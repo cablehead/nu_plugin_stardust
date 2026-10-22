@@ -11,6 +11,12 @@
 
 html {
   color-scheme: light;
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }
 html.dark {
   color-scheme: dark;
@@ -34,11 +40,74 @@ main {
   margin: 0 auto;
 }
 
+/* ---- contents ---------------------------------------------------- */
+
+/* The nav is the contents: a collapsed <details> at the top when narrow, a
+   sticky sidebar when wide (see the end). The current page is marked with
+   aria-current. */
 nav {
   font-size: var(--font-size--1);
   line-height: var(--font-line-height--1);
+  max-width: 68ch;
+  margin: 0 auto var(--size-4);
+}
+nav summary {
+  cursor: pointer;
+  padding: var(--size--2) 0;
   color: var(--neutral-1-dim);
-  margin-bottom: var(--size-5);
+  border-bottom: var(--border-width-1) solid var(--neutral-4);
+}
+nav summary:hover {
+  color: var(--neutral-1-on);
+}
+nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+/* Releases sit under notes with a small indent and no rule. The page being
+   read gets one rule beside its sections; deeper entries (a section's
+   subsections, its code) only indent. */
+nav ul ul {
+  padding-left: var(--size--1);
+}
+nav [aria-current] + ul {
+  margin: var(--border-width-4) 0 var(--size--2) var(--size--2);
+  padding-left: var(--size--2);
+  border-left: var(--border-width-1) solid var(--neutral-4);
+}
+nav [aria-current] + ul ul {
+  padding-left: var(--size--1);
+}
+nav code {
+  font-size: inherit;
+  padding: 0;
+  background: none;
+  color: inherit;
+}
+nav li + li {
+  margin-top: 0;
+}
+nav details > ul {
+  padding: var(--size--1) 0;
+}
+nav a {
+  display: block;
+  padding: var(--border-width-4) var(--size--2);
+  border-radius: var(--border-radius-1);
+  color: var(--neutral-1-on);
+  text-decoration: none;
+}
+nav [aria-current] + ul a {
+  color: var(--neutral-1-dim);
+}
+nav a:hover {
+  background: var(--neutral-3);
+  color: var(--neutral-1-on);
+}
+nav a[aria-current="page"] {
+  color: var(--neutral-1-on);
+  font-weight: var(--font-weight-semi-bold);
 }
 
 /* ---- headings ---------------------------------------------------- */
@@ -50,6 +119,7 @@ h1, h2, h3, h4 {
   line-height: 1.1;
   text-wrap: balance;
   color: var(--neutral-1-on);
+  scroll-margin-top: var(--size-4);
 }
 
 h1 {
@@ -66,6 +136,15 @@ h2 {
   margin: var(--size-6) 0 var(--size-1);
   padding-bottom: var(--size--1);
   border-bottom: var(--border-width-2) solid var(--neutral-4);
+}
+
+/* The section the contents (or a link) just jumped to. */
+h2:target {
+  color: var(--primary-7);
+  border-bottom-color: var(--primary-6);
+}
+h3:target {
+  color: var(--primary-7);
 }
 
 h3 {
@@ -147,6 +226,71 @@ pre code {
   color: inherit;
 }
 
+/* A code block sits in a <figure> with a copy <button>, top right, shown
+   on hover or focus, and always on touch screens. */
+figure {
+  position: relative;
+  margin: 0 0 var(--size-2);
+}
+figure > pre {
+  margin: 0;
+}
+figure > button {
+  position: absolute;
+  top: var(--size--2);
+  right: var(--size--2);
+  display: grid;
+  place-items: center;
+  padding: var(--border-width-5);
+  border: var(--border-width-1) solid var(--neutral-5);
+  border-radius: var(--border-radius-1);
+  background: var(--neutral-2);
+  color: var(--neutral-2-dim);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--anim-duration-fast);
+}
+figure:hover > button,
+figure > button:focus-visible,
+figure > button[data-copied] {
+  opacity: 1;
+}
+figure > button:hover {
+  color: var(--neutral-2-on);
+  border-color: var(--primary-6);
+}
+figure > button[data-copied] {
+  color: var(--primary-7);
+}
+/* With no hover the button always shows, so the code starts below it: its
+   offset, padding and border, and its 16px (1rem) icon, plus a gap. */
+@media (hover: none) {
+  figure > button {
+    opacity: 1;
+  }
+  figure > pre {
+    padding-top: calc(2 * var(--size--2) + 2 * var(--border-width-5) + 2 * var(--border-width-1) + 1rem);
+  }
+}
+
+/* A repro's source: open by default, its summary naming the file. */
+details {
+  margin: 0 0 var(--size-2);
+}
+details > summary {
+  cursor: pointer;
+  color: var(--neutral-1-dim);
+}
+details > summary:hover {
+  color: var(--neutral-1-on);
+}
+details[open] > summary {
+  margin-bottom: var(--size--1);
+}
+details:target > summary {
+  color: var(--primary-7);
+}
+
 /* ---- tables ------------------------------------------------------ */
 
 /* A wide table scrolls inside itself, not the page. Numbers line up on the
@@ -163,7 +307,6 @@ table {
 th, td {
   padding: 0 var(--size-0);
   line-height: var(--font-line-height-4);
-  border-bottom: var(--border-width-1) solid var(--neutral-4);
   text-align: right;
   white-space: nowrap;
 }
@@ -174,12 +317,44 @@ th {
   font-weight: var(--font-weight-semi-bold);
   border-bottom: var(--border-width-2) solid var(--neutral-5);
 }
+/* Zebra rows carry the eye across; the last row closes the table. */
+tbody tr:nth-child(even) {
+  background: var(--neutral-3);
+}
+tbody tr:last-child td {
+  border-bottom: var(--border-width-1) solid var(--neutral-4);
+}
 tbody tr:hover {
-  background: var(--neutral-2);
+  background: var(--neutral-4);
 }
 
 @media (min-width: 48rem) {
   body {
     padding: var(--size-6) var(--size-4) var(--size-9);
+  }
+}
+
+/* Wide: the contents becomes a sticky sidebar, always open, beside the
+   reading column. 15rem is the sidebar, as on understand-stellar. */
+@media (min-width: 64rem) {
+  body {
+    display: grid;
+    grid-template-columns: 15rem minmax(0, 68ch);
+    justify-content: center;
+    gap: var(--size-7);
+  }
+  nav {
+    position: sticky;
+    top: var(--size-6);
+    align-self: start;
+    max-height: calc(100vh - 2 * var(--size-6));
+    overflow-y: auto;
+    margin: 0;
+  }
+  nav summary {
+    display: none;
+  }
+  main {
+    margin: 0;
   }
 }

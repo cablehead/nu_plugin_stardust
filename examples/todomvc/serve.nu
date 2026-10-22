@@ -263,11 +263,128 @@ def release-date [release: string]: nothing -> string {
   | $"20($in.y)-($in.m)-($in.d) ($in.h):($in.min)"
 }
 
-# A markdown page, titled by its first heading.
-def note-page [note: any, code_css: string, rev: string]: string -> string {
+# A notes page, read with from md: meta, its frontmatter; title, its first
+# heading; intro, the markdown before the first section; and blocks, one per
+# second- or third-level heading, with its title, id ({#id} at the end of
+# the heading), level, and markdown, from the heading to the next one.
+# meta.code maps a file beside the page to the id of the block it ends, e.g.
+# {leak.c: per-thread}.
+def note-read []: string -> record {
   let markdown = $in
-  let title = $markdown | lines | where { str starts-with "# " } | first | str substring 2..
-  {title: $title body: ($markdown | .md | get __html) code: $code_css rev: $rev} | .mj render $note
+  let rows = $markdown | from md
+  let lines = $markdown | lines
+  let heads = $rows | where element == text and ($it.attributes?.level? | default 0) in [2 3]
+  let starts = $heads | get content_span.start.line | each { $in - 1 }
+  let body = $rows | where element == yaml | get content_span.end.line.0? | default 0
+  {
+    meta: ($rows | where element == yaml | get content.0? | default "{}" | from yaml)
+    title: ($rows | where element == text and ($it.attributes?.level? | default 0) == 1 | get content.0? | default "notes")
+    intro: ($lines | slice $body..<($starts.0? | default ($lines | length)) | str join "\n")
+    blocks: (
+      $heads | enumerate | each {|h|
+        let start = $starts | get $h.index
+        let end = $starts | skip ($h.index + 1) | get 0? | default ($lines | length)
+        let parts = $h.item.content | split row " {#"
+        {
+          title: $parts.0
+          id: ($parts.1? | default "" | str trim --right --char "}")
+          level: $h.item.attributes.level
+          markdown: ($lines | slice $start..<$end | str join "\n")
+        }
+      }
+    )
+  }
+}
+
+# A page's code files, as contents entries: {title, id, file: true}, for the
+# blocks with these ids.
+def note-code [code: record, ids: list<string>]: nothing -> list<record> {
+  $code
+  | transpose file id
+  | where id in $ids
+  | each {|c| {title: $c.file id: ($c.file | str replace -a '.' '-') file: true} }
+}
+
+# A page's sections for the contents: its second-level blocks, each with
+# subs, the third-level blocks under it and the code that ends any of them.
+def note-sections []: record -> list<record> {
+  let page = $in
+  let code = $page.meta.code? | default {}
+  let blocks = $page.blocks | enumerate
+  let tops = $blocks | where item.level == 2
+  $tops | enumerate | each {|t|
+    let start = $t.item.index
+    let end = $tops | skip ($t.index + 1) | get 0?.index | default ($blocks | length)
+    let under = $blocks | where index > $start and index < $end | get item
+    {
+      title: $t.item.item.title
+      id: $t.item.item.id
+      subs: (
+        $under
+        | each {|b| {title: $b.title id: $b.id file: false} }
+        | append (note-code $code ([$t.item.item.id] ++ $under.id))
+      )
+    }
+  }
+}
+
+# The contents for a page: every release, newest first, with the sections of
+# the one being read (current, or "" for the index).
+def note-contents [dir: string, current: string]: nothing -> list<record> {
+  releases $dir | each {|r|
+    let sections = if $r == $current {
+      open --raw ($dir | path join $r index.md) | decode utf-8 | note-read | note-sections
+    } else { [] }
+    {name: $r current: ($r == $current) sections: $sections}
+  }
+}
+
+const copy_icon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
+
+# A file beside a notes page, as an open block of highlighted code, its
+# id the file name with . as - (leak.c is #leak-c).
+def code-file [dir: string, file: string]: nothing -> string {
+  let code = open --raw ($dir | path join $file) | decode utf-8
+  let lang = $file | path parse | get extension
+  let lines = $code | lines | length
+  let body = $code | .highlight $lang | get __html
+  $"<details open id=\"($file | str replace -a '.' '-')\"><summary><code>($file)</code>, ($lines) lines</summary>\n<pre><code class=\"language-($lang)\">($body)</code></pre>\n</details>"
+}
+
+# A page read by note-read, as HTML: each part through .md, each block
+# followed by the code meta.code ends it with, and a copy button on every
+# code block.
+def note-html [dir: string]: record -> string {
+  let page = $in
+  let code = $page.meta.code? | default {} | transpose file id
+  $page.blocks
+  | each {|b|
+    $code
+    | where id == $b.id
+    | get file
+    | each { code-file $dir $in }
+    | prepend ($b.markdown | .md | get __html)
+    | str join "\n"
+  }
+  | prepend ($page.intro | .md | get __html)
+  | str join "\n"
+  | str replace -a '<pre>' $'<figure><button type="button" aria-label="copy">($copy_icon)</button><pre>'
+  | str replace -a '</pre>' '</pre></figure>'
+}
+
+# A markdown page with the notes contents beside it. dir holds the files its
+# meta.code names.
+def note-page [note: any, code_css: string, rev: string, contents: list, current: string, dir: string]: string -> string {
+  let page = note-read
+  {
+    title: $page.title
+    body: ($page | note-html $dir)
+    code: $code_css
+    rev: $rev
+    releases: $contents
+    index: ($current == "")
+  }
+  | .mj render $note
 }
 
 def redirect [to: string] {
@@ -416,12 +533,14 @@ def match-notes-route [dir: string] {
             | each {|r| $"- [($r)]\(($r)/) (release-date $r)" }
             | prepend ["# notes on stardust" "" "one page per stardust release this site has run on, newest first." ""]
             | str join "\n"
-            | note-page $note $code_css $rev
+            | note-page $note $code_css $rev (note-contents $notes_dir "") "" $notes_dir
           }
         } else if not $ctx.slash {
           redirect $"/notes/($ctx.release)/"
         } else if $ctx.file == "" {
-          open --raw ($notes_dir | path join $ctx.release index.md) | decode utf-8 | note-page $note $code_css $rev
+          open --raw ($notes_dir | path join $ctx.release index.md)
+          | decode utf-8
+          | note-page $note $code_css $rev (note-contents $notes_dir $ctx.release) $ctx.release ($notes_dir | path join $ctx.release)
         } else {
           open --raw ($notes_dir | path join $ctx.release $ctx.file)
           | decode utf-8
