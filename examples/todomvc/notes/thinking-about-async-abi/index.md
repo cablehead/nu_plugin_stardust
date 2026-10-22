@@ -48,3 +48,16 @@ all four then work the same way:
 3. after a `TIMEOUT`, stardust calls `notify` once, when the next one is ready. then go back to step 2.
 
 `notify` can run on any thread, and must not call stardust.
+
+the three `events` calls could also share a single mechanism. an owner already holds every subscription, registration and exchange it opened. so one `notify` per owner, registered with `target` `{owner 1}`, could cover all of them, with one call that returns whichever is ready next:
+
+```
+events.next {owner 1 maxWait {#dur PT5S}}
+  -> {kind event subscription 10 subject "todos/created" data {...}}
+   | {kind call registration 20 handle 31 subject "todos/count" data {...}}
+   | {kind message handle 30 data {...}}
+   | {kind finish handle 30}
+   | {kind cancel handle 30}
+```
+
+the same three steps apply, with `events.next` as the call. a connection then needs one `notify` and one loop, however many subscriptions, registrations and exchanges it holds.
