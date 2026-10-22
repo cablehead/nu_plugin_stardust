@@ -1,13 +1,15 @@
-{#- A notes page: title, description, url and image (absolute, or none)
-    for its meta tags, and body, the HTML rendered from its markdown. code
-    is the stylesheet for highlighted code blocks. releases is the
-    contents, newest first: {name, current, sections, pages: [{name,
-    current, sections}]}, sections being [{title, id, subs}] and subs
-    [{title, id, file}] (file: true for included code), with sections only
-    for the page being read. -#}
-{%- macro contents(sections) %}
+{#- A notes page: title, description, url and image (absolute, or none) for
+    its meta tags, and body, the HTML rendered from its markdown. code is
+    the stylesheet for highlighted code blocks. topics and releases are the
+    contents, releases newest first, each a list of {name, current,
+    sections: [{title, id, subs}]}, subs being [{title, id, file}] (file:
+    true for included code), with sections only for the page being read. -#}
+{%- macro entry(r) %}
+              <li>
+                <a href="/notes/{{ r.name }}/" {% if r.current %}aria-current="page"{% endif %}>{{ r.name }}</a>
+                {%- if r.sections %}
                 <ul>
-                  {%- for s in sections %}
+                  {%- for s in r.sections %}
                   <li>
                     <a href="#{{ s.id }}">{{ s.title }}</a>
                     {%- if s.subs %}
@@ -20,6 +22,8 @@
                   </li>
                   {%- endfor %}
                 </ul>
+                {%- endif %}
+              </li>
 {%- endmacro %}
 <!DOCTYPE html>
 <html lang="en">
@@ -59,22 +63,8 @@
           <li>
             <a href="/notes/">notes</a>
             <ul>
-              {%- for r in releases %}
-              <li>
-                <a href="/notes/{{ r.name }}/" {% if r.current %}aria-current="page"{% endif %}>{{ r.name }}</a>
-                {%- if r.sections %}{{ contents(r.sections) }}{% endif %}
-                {%- if r.pages %}
-                <ul>
-                  {%- for p in r.pages %}
-                  <li>
-                    <a href="/notes/{{ r.name }}/{{ p.name }}" {% if p.current %}aria-current="page"{% endif %}>{{ p.name }}</a>
-                    {%- if p.sections %}{{ contents(p.sections) }}{% endif %}
-                  </li>
-                  {%- endfor %}
-                </ul>
-                {%- endif %}
-              </li>
-              {%- endfor %}
+              {%- for r in topics %}{{ entry(r) }}{% endfor %}
+              {%- for r in releases %}{{ entry(r) }}{% endfor %}
             </ul>
           </li>
         </ul>

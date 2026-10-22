@@ -244,21 +244,30 @@ let section = .mj compile ($here | path join templates/todos.html)
 
 # Notes on Stardust, one page per release: notes/<release>/index.md, and the
 # files it links to beside it. Pages end in /, so relative links work the
-# same here as on GitHub. A release can have more pages, notes/<release>/
-# <name>.md, at /notes/<release>/<name>.
+# same here as on GitHub. A note on a topic rather than a release has the
+# same layout, with the release it applies to in its frontmatter (release:
+# alpha-2610212237).
 let note = .mj compile ($here | path join templates/note.html)
 # Highlighted code: OneHalf, dark or light to match the page.
 let code_css = $"html.dark {(.highlight theme OneHalfDark)}\nhtml:not\(.dark) {(.highlight theme OneHalfLight)}"
 let notes_dir = $here | path join notes
 
-# The releases with notes, newest first.
-def releases [dir: string]: nothing -> list<string> {
-  ls $dir | where type == dir | get name | path basename | sort --reverse
+# Every note: releases and topics, by name.
+def notes [dir: string]: nothing -> list<record> {
+  ls $dir | where type == dir | get name | each {|d|
+    let meta = open --raw ($d | path join index.md) | decode utf-8 | from md | where element == yaml | get content.0? | default "{}" | from yaml
+    {name: ($d | path basename) release: $meta.release?}
+  }
 }
 
-# A release's pages besides its index: the names of its other .md files.
-def release-pages [dir: string]: nothing -> list<string> {
-  ls $dir | get name | path basename | where $it ends-with ".md" and $it != "index.md" | str replace -r '\.md$' '' | sort
+# The releases with notes, newest first.
+def releases [dir: string]: nothing -> list<string> {
+  notes $dir | where release == null | get name | sort --reverse
+}
+
+# The topic notes, by name.
+def topics [dir: string]: nothing -> list<string> {
+  notes $dir | where release != null | get name | sort
 }
 
 # A notes page, read with from md: meta, its frontmatter; title, its first
@@ -326,26 +335,18 @@ def note-sections []: record -> list<record> {
   }
 }
 
-# The contents for a page: every release, newest first, with its pages, and
-# the sections of the one being read: page in release current, "" for its
-# index.
-def note-contents [dir: string, current: string, page: string]: nothing -> list<record> {
-  let sections = {|r p|
-    open --raw ($dir | path join $r $"(if $p == "" { "index" } else { $p }).md") | decode utf-8 | note-read | note-sections
+# The contents for a page: the topics, then every release, newest first,
+# each with the sections of the one being read (current).
+def note-contents [dir: string, current: string]: nothing -> record {
+  let entry = {|n|
+    let sections = if $n == $current {
+      open --raw ($dir | path join $n index.md) | decode utf-8 | note-read | note-sections
+    } else { [] }
+    {name: $n current: ($n == $current) sections: $sections}
   }
-  releases $dir | each {|r|
-    let here = $r == $current
-    {
-      name: $r
-      current: ($here and $page == "")
-      sections: (if $here and $page == "" { do $sections $r "" } else { [] })
-      pages: (
-        release-pages ($dir | path join $r) | each {|p|
-          let open = $here and $p == $page
-          {name: $p current: $open sections: (if $open { do $sections $r $p } else { [] })}
-        }
-      )
-    }
+  {
+    topics: (topics $dir | each {|n| do $entry $n })
+    releases: (releases $dir | each {|n| do $entry $n })
   }
 }
 
@@ -389,21 +390,22 @@ def note-html [dir: string]: record -> string {
   | str replace -a '</pre>' '</pre></figure>'
 }
 
-# A notes page, with the notes contents beside it. dir holds the page and the
-# files its meta.code names; base is the release's URL and url the page's
-# own, both absolute, for its og tags. Its og image is image beside it, if
-# there is one, and its description meta.description.
-def note-page [note: any, code_css: string, rev: string, contents: list, dir: string, base: string, url: string, image: string]: string -> string {
+# A notes page, with the notes contents beside it. dir holds the
+# page and the files its meta.code names; url is the page's own, absolute,
+# for its og tags. Its og image is og.png beside it, if there is one, and its
+# description meta.description.
+def note-page [note: any, code_css: string, rev: string, contents: record, dir: string, url: string]: string -> string {
   let page = note-read
   {
     title: $page.title
     description: ($page.meta.description? | default "")
     url: $url
-    image: (if ($dir | path join $image | path exists) { $"($base)($image)?v=($rev)" })
+    image: (if ($dir | path join og.png | path exists) { $"($url)og.png?v=($rev)" })
     body: ($page | note-html $dir)
     code: $code_css
     rev: $rev
-    releases: $contents
+    topics: $contents.topics
+    releases: $contents.releases
   }
   | .mj render $note
 }
@@ -421,11 +423,10 @@ def redirect [to: string] {
   null | metadata set { merge {'http.response': {status: 302 headers: {Location: $to}}} }
 }
 
-# A route test for /notes paths: /notes, /notes/, /notes/<release>,
-# /notes/<release>/ and /notes/<release>/<file>, for a release and file that
-# exist, the file being a page when <file>.md is. ctx has release and file,
-# either of which may be empty; slash, whether a release came with its
-# trailing /; and page, whether the file is a page.
+# A route test for /notes paths: /notes, /notes/, /notes/<note>, /notes/<note>/
+# and /notes/<note>/<file>, for a note (a release or a topic) and file that
+# exist. ctx has release, the note, and file, either of which may be empty,
+# and slash, whether a note came with its trailing /.
 def match-notes-route [dir: string] {
   {|req|
     if $req.method == GET {
@@ -436,12 +437,10 @@ def match-notes-route [dir: string] {
         let m = $in
         let release = $m.release? | default ""
         let file = $m.file? | default ""
-        let known = $release == "" or ($release in (releases $dir))
-        let files = if $known and $release != "" { ls ($dir | path join $release) | get name | path basename } else { [] }
-        let page = $file != "" and $file not-in $files and $"($file).md" in $files and $file != "index"
-        let found = $file == "" or $file in $files or $page
-        if $known and $found and $file != "index.md" {
-          {release: $release file: $file slash: ($m.slash? == "/") page: $page}
+        let known = $release == "" or ($release in (notes $dir | get name))
+        let found = $file == "" or ($known and ($file in (ls ($dir | path join $release) | get name | path basename)))
+        if $known and $found and ($file == "" or $file != "index.md") {
+          {release: $release file: $file slash: ($m.slash? == "/")}
         }
       }
     }
@@ -557,12 +556,10 @@ def match-notes-route [dir: string] {
           redirect $"/notes/(releases $notes_dir | first)/"
         } else if not $ctx.slash {
           redirect $"/notes/($ctx.release)/"
-        } else if $ctx.file == "" or $ctx.page {
-          let base = $"(site-url $req)notes/($ctx.release)/"
-          let name = if $ctx.page { $ctx.file } else { "index" }
-          open --raw ($notes_dir | path join $ctx.release $"($name).md")
+        } else if $ctx.file == "" {
+          open --raw ($notes_dir | path join $ctx.release index.md)
           | decode utf-8
-          | note-page $note $code_css $rev (note-contents $notes_dir $ctx.release (if $ctx.page { $ctx.file } else { "" })) ($notes_dir | path join $ctx.release) $base $"($base)(if $ctx.page { $ctx.file })" (if $ctx.page { $"($ctx.file).png" } else { "og.png" })
+          | note-page $note $code_css $rev (note-contents $notes_dir $ctx.release) ($notes_dir | path join $ctx.release) $"(site-url $req)notes/($ctx.release)/"
         } else if ($ctx.file | str ends-with ".png") {
           .static $here $req.path
         } else {
