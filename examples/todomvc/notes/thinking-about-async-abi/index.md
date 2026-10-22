@@ -1,12 +1,10 @@
 ---
 release: alpha-2610212237
-description: "the four stardust calls that wait for the next thing to arrive, and how each could tell an async client when it's ready. applies to alpha-2610212237."
+description: "the stardust calls that wait for the next thing to arrive, and how an async client could be told when each is ready. applies to alpha-2610212237."
 ---
 # thinking about an async abi
 
-this note describes the C ABI in [alpha-2610212237](../alpha-2610212237/).
-
-## the four calls {#calls}
+in [alpha-2610212237](../alpha-2610212237/), these calls wait for the next thing to arrive. an async client needs to be told when each is ready, instead of blocking a thread. only the first can do that today.
 
 | call | waits for | async |
 |---|:---|:---|
