@@ -5,7 +5,6 @@ description: "per-thread leak: open, 4 MB to 0.4 MB per thread. schema clause le
 code_from: ../alpha-2610171653
 code:
   leak.c: per-thread
-  subcommit.c: schema-clause
 ---
 # stardust alpha-2610212237
 
