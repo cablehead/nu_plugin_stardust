@@ -4,7 +4,7 @@ description: "brainstorming async notify for stardust"
 ---
 # thinking about an async abi
 
-in [alpha-2610230456](../alpha-2610230456/), four calls wait for the next thing to arrive. `stardust_db_subscription_next` can notify an async client when it's ready. `events.receive`, `events.accept` and `events.read` can't, so the client polls them, blocks on them, or runs each on its own thread.
+in [alpha-2610230456](../alpha-2610230456/), a live query can call you back when it has a new result, so an async program can wait for it without tying up a thread. the events plugin's `receive`, `accept` and `read` can't call you back. an async program has to poll them, or block a thread on each one.
 
 | call | waits for | async |
 |---|:---|:---|
