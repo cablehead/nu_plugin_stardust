@@ -45,13 +45,16 @@ the change to `stardust.h`. lines starting `-` are removed, lines starting `+` a
 
 ## how it behaves {#behaves}
 
-the same as `set_notify` today, for every source in the waitset:
+two things are new:
 
-- you pick each source's token when you add it. `ready` hands back the tokens of the sources that are ready, and you make those calls with a wait of 0.
+- each source gets a token, a number you pick when you add it. today each subscription has its own `notify`, and its `ctx` tells you which one is ready. a waitset has one `notify` for all its sources, so `ready` hands back the tokens of the ones that are ready instead. you then make those calls with a wait of 0.
+- `ready` with a wait above 0 blocks, so a program without callbacks can wait on everything from one thread.
+
+the rest is the same as `set_notify` today, for every source in the waitset:
+
 - a source becomes ready again only after its call returns `TIMEOUT`. it appears in the ready list at most once.
 - `notify` fires once each time the ready list goes from empty to not empty. it can run on any thread, and must not call stardust.
 - a source that ends (cancelled, unsubscribed, closed) becomes ready, and its call then returns `CANCELLED` or `CLOSED`.
-- `ready` with a wait above 0 blocks, so a program without callbacks can wait on everything from one thread.
 
 ## what it breaks {#breaks}
 
