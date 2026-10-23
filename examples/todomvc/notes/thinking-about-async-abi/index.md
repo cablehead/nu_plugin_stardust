@@ -1,10 +1,10 @@
 ---
-release: alpha-2610212237
+release: alpha-2610230456
 description: "brainstorming async notify for stardust"
 ---
 # thinking about an async abi
 
-in [alpha-2610212237](../alpha-2610212237/), four calls wait for the next thing to arrive. `stardust_db_subscription_next` can notify an async client when it's ready. `events.receive`, `events.accept` and `events.read` can't, so the client polls them, blocks on them, or runs each on its own thread.
+in [alpha-2610230456](../alpha-2610230456/), four calls wait for the next thing to arrive. `stardust_db_subscription_next` can notify an async client when it's ready. `events.receive`, `events.accept` and `events.read` can't, so the client polls them, blocks on them, or runs each on its own thread.
 
 | call | waits for | async |
 |---|:---|:---|
@@ -17,11 +17,11 @@ a live query is async with `set_notify`:
 
 ```c
 typedef void (*stardust_db_subscription_notify)(void *ctx);
-uint32_t stardust_db_subscription_set_notify(
+int64_t stardust_db_subscription_set_notify(
     stardust_db_subscription *sub,
     stardust_db_subscription_notify notify,
     void *ctx);
-uint32_t stardust_db_subscription_next(
+int64_t stardust_db_subscription_next(
     stardust_db_subscription *sub,
     int64_t max_wait_ticks,
     stardust_db_live_event *event);
@@ -39,23 +39,23 @@ this is a brainstorm. a waitset, like a small `epoll`, could make all four calls
 typedef struct stardust_db_waitset stardust_db_waitset;
 typedef void (*stardust_db_waitset_notify)(void *ctx);
 
-uint32_t stardust_db_waitset_open(
+int64_t stardust_db_waitset_open(
     stardust_db *db,
     stardust_db_waitset **out);
-uint32_t stardust_db_waitset_set_notify(
+int64_t stardust_db_waitset_set_notify(
     stardust_db_waitset *ws,
     stardust_db_waitset_notify notify,
     void *ctx);
-uint32_t stardust_db_waitset_add_subscription(
+int64_t stardust_db_waitset_add_subscription(
     stardust_db_waitset *ws,
     stardust_db_subscription *sub,
-    uint64_t token);
-uint32_t stardust_db_waitset_ready(
+    int64_t token);
+int64_t stardust_db_waitset_ready(
     stardust_db_waitset *ws,
     int64_t max_wait_ticks,
-    uint64_t *tokens,
-    size_t capacity,
-    size_t *count);
+    int64_t *tokens,
+    int64_t capacity,
+    int64_t *count);
 void stardust_db_waitset_release(stardust_db_waitset *ws);
 ```
 
