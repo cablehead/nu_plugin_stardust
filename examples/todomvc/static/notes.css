@@ -62,9 +62,8 @@ nav ul {
   margin: 0;
   padding: 0;
 }
-/* Releases sit under notes with a small indent and no rule. The page being
-   read gets one rule beside its sections; deeper entries (a section's
-   subsections, its code) only indent. */
+/* The page being read gets one rule beside its sections; deeper entries (a
+   section's subsections, its code) only indent. */
 nav ul ul {
   padding-left: var(--size--1);
 }
@@ -79,12 +78,18 @@ nav [aria-current] + ul ul {
 nav code {
   font-size: inherit;
 }
-
-nav details > ul {
-  padding: var(--size--1) 0;
+/* The path to the notes, then a label above each list. */
+nav p {
+  margin: 0;
+  color: var(--neutral-1-dim);
+}
+nav * + p {
+  margin-top: var(--size-0);
+}
+nav li > a {
+  display: block;
 }
 nav a {
-  display: block;
   border-radius: var(--border-radius-1);
   color: var(--neutral-1-on);
   text-decoration: none;

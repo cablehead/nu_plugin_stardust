@@ -5,25 +5,25 @@
     sections: [{title, id, subs}]}, subs being [{title, id, file}] (file:
     true for included code), with sections only for the page being read. -#}
 {%- macro entry(r) %}
+          <li>
+            <a href="/notes/{{ r.name }}/" {% if r.current %}aria-current="page"{% endif %}>{{ r.name }}</a>
+            {%- if r.sections %}
+            <ul>
+              {%- for s in r.sections %}
               <li>
-                <a href="/notes/{{ r.name }}/" {% if r.current %}aria-current="page"{% endif %}>{{ r.name }}</a>
-                {%- if r.sections %}
+                <a href="#{{ s.id }}">{{ s.title }}</a>
+                {%- if s.subs %}
                 <ul>
-                  {%- for s in r.sections %}
-                  <li>
-                    <a href="#{{ s.id }}">{{ s.title }}</a>
-                    {%- if s.subs %}
-                    <ul>
-                      {%- for sub in s.subs %}
-                      <li><a href="#{{ sub.id }}">{% if sub.file %}<code>{{ sub.title }}</code>{% else %}{{ sub.title }}{% endif %}</a></li>
-                      {%- endfor %}
-                    </ul>
-                    {%- endif %}
-                  </li>
+                  {%- for sub in s.subs %}
+                  <li><a href="#{{ sub.id }}">{% if sub.file %}<code>{{ sub.title }}</code>{% else %}{{ sub.title }}{% endif %}</a></li>
                   {%- endfor %}
                 </ul>
                 {%- endif %}
               </li>
+              {%- endfor %}
+            </ul>
+            {%- endif %}
+          </li>
 {%- endmacro %}
 <!DOCTYPE html>
 <html lang="en">
@@ -58,15 +58,16 @@
     <nav aria-label="contents">
       <details>
         <summary>contents</summary>
-        <ul>
-          <li><a href="/">todomvc</a></li>
-          <li>
-            <a href="/notes/">notes</a>
-            <ul>
-              {%- for r in topics %}{{ entry(r) }}{% endfor %}
-              {%- for r in releases %}{{ entry(r) }}{% endfor %}
-            </ul>
-          </li>
+        <p><a href="/">todomvc</a> / <a href="/notes/">notes</a></p>
+        {%- if topics %}
+        <p id="topics">topics</p>
+        <ul aria-labelledby="topics">
+          {%- for r in topics %}{{ entry(r) }}{% endfor %}
+        </ul>
+        {%- endif %}
+        <p id="releases">releases</p>
+        <ul aria-labelledby="releases">
+          {%- for r in releases %}{{ entry(r) }}{% endfor %}
         </ul>
       </details>
     </nav>
