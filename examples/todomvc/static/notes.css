@@ -180,11 +180,6 @@ li::marker {
   color: var(--neutral-1-dim);
 }
 
-li + li {
-    margin-top: var(--size--2);
-  }
-
-
 blockquote {
   padding: var(--size--1) var(--size-2);
   border-left: var(--border-width-3) solid var(--primary-5);
