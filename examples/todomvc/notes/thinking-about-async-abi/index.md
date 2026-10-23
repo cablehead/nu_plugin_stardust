@@ -79,6 +79,20 @@ today `Database::subscribe` gives each subscription its own `Signal`, and regist
 
 `Subscription::next().await` keeps its shape. it registers its waker, calls `subscription_next` with `max_wait_ticks` 0, and returns `Pending` on `STARDUST_TIMEOUT`.
 
+```rust
+pub async fn next(&mut self) -> Result<Option<Event>> {
+    std::future::poll_fn(|context| {
+        self.slot.register(context.waker());
+        // subscription_next with max_wait_ticks 0
+        match self.try_next() {
+            Ok(None) => Poll::Pending, // STARDUST_TIMEOUT
+            result => Poll::Ready(result),
+        }
+    })
+    .await
+}
+```
+
 the `stardust-wake` thread stays, since a notify callback can't call stardust. on each notify it asks the waitset what's ready, and wakes those slots:
 
 ```rust
