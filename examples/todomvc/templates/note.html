@@ -57,6 +57,28 @@
     <link rel="stylesheet" href="/static/stellar.css?v={{ rev }}">
     <link rel="stylesheet" href="/static/notes.css?v={{ rev }}">
     <style>{{ code | safe }}</style>
+    <script>
+      // Tuning, local only: ?tune turns on a panel (static/tune.js) for trying
+      // other tokens on the transitions between notes, ?tune=off turns it off.
+      // The CSS for the picks is applied here, before the page is first shown.
+      (() => {
+        let tune;
+        try {
+          const q = new URLSearchParams(location.search).get('tune');
+          if (q === 'off') localStorage.removeItem('tune');
+          else if (q !== null && !localStorage.getItem('tune')) localStorage.setItem('tune', '{}');
+          tune = JSON.parse(localStorage.getItem('tune'));
+        } catch {}
+        if (!tune) return;
+        const style = document.createElement('style');
+        style.id = 'tune-style';
+        style.textContent = tune.css ?? '';
+        document.head.append(style);
+        const script = document.createElement('script');
+        script.src = '/static/tune.js?v={{ rev }}';
+        document.head.append(script);
+      })();
+    </script>
   </head>
   <body>
     <nav aria-label="contents">
