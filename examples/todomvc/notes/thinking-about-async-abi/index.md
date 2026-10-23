@@ -4,7 +4,7 @@ description: "our ask: a waitset, so live queries and the events calls are async
 ---
 # thinking about an async abi
 
-in [alpha-2610230456](../alpha-2610230456/), a live query can call you back when it has a new result, so an async program can wait for it without tying up a thread. the events plugin's `receive`, `accept` and `read` can't call you back. an async program has to poll them, or block a thread on each one.
+in [alpha-2610230456](../alpha-2610230456/), a live query can call you back when it has a new result, so an async program can wait for it without tying up a thread. `events.receive`, `events.accept` and `events.read` can't call you back. an async program has to poll them, or block a thread on each one.
 
 | call | waits for | async |
 |---|:---|:---|
@@ -37,11 +37,11 @@ the change to `stardust.h`. lines starting `-` are removed, lines starting `+` a
 
 `stardust_db_waitset_add_plugin` takes what you'd pass to `stardust_db_plugin_call` for the call it watches, without `maxWait`. for the events plugin:
 
-| operation | request | waits for |
-|---|:---|:---|
-| `receive` | `{owner 1 subscription 10}` | the next published event |
-| `accept` | `{owner 2 registration 20}` | the next call to a subject you registered |
-| `read` | `{owner 1 handle 30}` | the next message in an exchange |
+| call | `plugin_name` | `operation` | `request` |
+|---|:---|:---|:---|
+| `events.receive` | `events` | `receive` | `{owner 1 subscription 10}` |
+| `events.accept` | `events` | `accept` | `{owner 2 registration 20}` |
+| `events.read` | `events` | `read` | `{owner 1 handle 30}` |
 
 ## how it behaves {#behaves}
 
