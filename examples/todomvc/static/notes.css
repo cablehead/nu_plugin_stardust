@@ -27,17 +27,15 @@ body {
   padding: var(--size-3) var(--size-5) var(--size-9);
   font-family: var(--font-sans);
   font-size: var(--font-size-0);
-  line-height: var(--font-line-height-0);
+  line-height: var(--font-line-height-1);
   background: var(--neutral-1);
   color: var(--neutral-1-on);
   -webkit-text-size-adjust: 100%;
 }
 
-/* The reading column. 68ch: a comfortable measure for prose, wide enough
-   for the repro tables. */
+/* The reading column. */
 main {
-  max-width: 68ch;
-  margin: 0 auto;
+  max-width: 81ch;
 }
 
 /* ---- contents ---------------------------------------------------- */
@@ -48,8 +46,7 @@ main {
 nav {
   font-size: var(--font-size--1);
   line-height: var(--font-line-height--1);
-  max-width: 68ch;
-  margin: 0 auto var(--size-4);
+  max-width: 81ch;
 }
 nav summary {
   cursor: pointer;
@@ -72,7 +69,7 @@ nav ul ul {
   padding-left: var(--size--1);
 }
 nav [aria-current] + ul {
-  margin: var(--border-width-4) 0 var(--size--2) var(--size--2);
+  margin-left: var(--size--2);
   padding-left: var(--size--2);
   border-left: var(--border-width-1) solid var(--neutral-4);
 }
@@ -81,19 +78,13 @@ nav [aria-current] + ul ul {
 }
 nav code {
   font-size: inherit;
-  padding: 0;
-  background: none;
-  color: inherit;
 }
-nav li + li {
-  margin-top: 0;
-}
+
 nav details > ul {
   padding: var(--size--1) 0;
 }
 nav a {
   display: block;
-  padding: var(--border-width-4) var(--size--2);
   border-radius: var(--border-radius-1);
   color: var(--neutral-1-on);
   text-decoration: none;
@@ -180,12 +171,14 @@ strong {
 ul, ol {
   padding-left: var(--size-3);
 }
-li + li {
-  margin-top: var(--size--2);
-}
 li::marker {
   color: var(--neutral-1-dim);
 }
+
+li + li {
+    margin-top: var(--size--2);
+  }
+
 
 blockquote {
   padding: var(--size--1) var(--size-2);
@@ -205,15 +198,10 @@ hr {
 
 /* ---- code -------------------------------------------------------- */
 
-/* The size scale starts too large for a chip's sides; the border widths are
-   the small steps. */
+/* Code is set apart by its font alone, in prose, tables and the contents. */
 code {
   font-family: var(--font-mono);
   font-size: var(--font-size-0);
-  padding: 0 var(--border-width-4);
-  border-radius: var(--border-radius-1);
-  background: var(--neutral-3);
-  color: var(--neutral-3-on);
 }
 
 pre {
@@ -225,13 +213,6 @@ pre {
   line-height: var(--font-line-height-0);
   overflow-x: auto;
 }
-pre code {
-  padding: 0;
-  border-radius: 0;
-  background: none;
-  color: inherit;
-}
-
 /* A code block sits in a <figure> with a copy <button>, top right, shown
    on hover or focus, and always on touch screens. */
 figure {
@@ -247,9 +228,7 @@ figure > button {
   right: var(--size--2);
   display: grid;
   place-items: center;
-  padding: var(--border-width-5);
-  border: var(--border-width-1) solid var(--neutral-5);
-  border-radius: var(--border-radius-1);
+  border: none;
   background: var(--neutral-2);
   color: var(--neutral-2-dim);
   cursor: pointer;
@@ -263,19 +242,18 @@ figure > button[data-copied] {
 }
 figure > button:hover {
   color: var(--neutral-2-on);
-  border-color: var(--primary-6);
 }
 figure > button[data-copied] {
   color: var(--primary-7);
 }
 /* With no hover the button always shows, so the code starts below it: its
-   offset, padding and border, and its 16px (1rem) icon, plus a gap. */
+   offset, and its 16px (1rem) icon, plus a gap. */
 @media (hover: none) {
   figure > button {
     opacity: 1;
   }
   figure > pre {
-    padding-top: calc(2 * var(--size--2) + 2 * var(--border-width-5) + 2 * var(--border-width-1) + 1rem);
+    padding-top: calc(2 * var(--size--2) + 1rem);
   }
 }
 
@@ -327,11 +305,6 @@ td[style*="left"] {
   white-space: normal;
   line-height: var(--font-line-height-1);
 }
-/* Code in a cell: no chip, which the zebra rows would hide on every other row. */
-td code {
-  padding: 0;
-  background: none;
-}
 th {
   font-weight: var(--font-weight-semi-bold);
   border-bottom: var(--border-width-2) solid var(--neutral-5);
@@ -358,9 +331,8 @@ tbody tr:hover {
 @media (min-width: 64rem) {
   body {
     display: grid;
-    grid-template-columns: 15rem minmax(0, 68ch);
+    grid-template-columns: 15rem minmax(0, 81ch);
     justify-content: center;
-    gap: var(--size-7);
   }
   nav {
     position: sticky;
