@@ -64,8 +64,6 @@ removing `subscription_set_notify` breaks the Rust and Python bindings. both bui
 
 ## the rust sdk {#rust}
 
-a sketch against the alpha-2610230456 binding, not compiled.
-
 today `Database::subscribe` gives each subscription its own `Signal`, and registers it with `subscription_set_notify`. with a waitset, the database opens one waitset, and each subscription joins it. its token is a slot in the database's table of wakers:
 
 ```diff
