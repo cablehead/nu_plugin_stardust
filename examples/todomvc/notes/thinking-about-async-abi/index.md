@@ -1,6 +1,6 @@
 ---
 release: alpha-2610212237
-description: "the stardust calls that wait for the next thing to arrive, and a brainstorm on a waitset that would tell an async client when any of them is ready. applies to alpha-2610212237."
+description: "brainstorming async notify for stardust"
 ---
 # thinking about an async abi
 
