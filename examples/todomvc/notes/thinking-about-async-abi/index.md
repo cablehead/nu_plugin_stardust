@@ -6,7 +6,7 @@ description: "our ask: a waitset, so live queries and the events calls are async
 
 in [alpha-2610230456](../alpha-2610230456/), a live query can call you back when it has a new result, so an async program can wait for it without tying up a thread. `events.receive`, `events.accept` and `events.read` can't call you back. an async program has to poll them, or block a thread on each one.
 
-names here drop their `stardust_db_` prefix, except in the `stardust.h` diff.
+names here drop their `stardust_db_` prefix, except in code.
 
 | call | waits for | async |
 |---|:---|:---|
@@ -61,3 +61,57 @@ the rest is the same as `subscription_set_notify` today, for every source in the
 ## what it breaks {#breaks}
 
 removing `subscription_set_notify` breaks the Rust and Python bindings. both build their async wait for `subscription_next` on it. each would move to a waitset holding one subscription.
+
+## the rust sdk {#rust}
+
+a sketch against the alpha-2610230456 binding, not compiled.
+
+today `Database::subscribe` gives each subscription its own `Signal`, and registers it with `subscription_set_notify`. with a waitset, the database opens one waitset, and each subscription joins it. its token is a slot in the database's table of wakers:
+
+```diff
+-let signal = Signal::new()?;
+-native::stardust_db_subscription_set_notify(
+-    raw,
+-    Some(Signal::notify),
+-    Arc::as_ptr(&signal).cast_mut().cast(),
+-);
++let slot = self.wakers.insert()?;
++native::stardust_db_waitset_add_subscription(self.waitset, raw, slot);
+```
+
+`Subscription::next().await` keeps its shape. it registers its waker, calls `subscription_next` with `max_wait_ticks` 0, and returns `Pending` on `STARDUST_TIMEOUT`.
+
+the `stardust-wake` thread stays, since a notify callback can't call stardust. on each notify it asks the waitset what's ready, and wakes those slots:
+
+```rust
+let mut tokens = [0i64; 64];
+loop {
+    let mut count = 0;
+    native::stardust_db_waitset_ready(waitset, 0, tokens.as_mut_ptr(), 64, &mut count);
+    for &token in &tokens[..count as usize] {
+        wakers.wake(token);
+    }
+    if count < 64 {
+        break;
+    }
+}
+```
+
+the `events` calls get async versions the same way. each source joins once, with `waitset_add_plugin`. then the call checks once, without `maxWait`:
+
+```rust
+pub async fn receive(&self, options: &Document) -> Result<Document> {
+    // waitset_add_plugin, once per source
+    let slot = self.database.watch("events", "receive", options)?;
+    std::future::poll_fn(|context| {
+        slot.register(context.waker());
+        match self.database.plugin_call("events", "receive", Some(options)) {
+            Err(error) if error.status == Status::TIMEOUT => Poll::Pending,
+            result => Poll::Ready(result),
+        }
+    })
+    .await
+}
+```
+
+the `Signal` per subscription goes, and with it the binding's cap of 1024 subscriptions per CPU, past which subscribing returns `STARDUST_LOCKED`.
