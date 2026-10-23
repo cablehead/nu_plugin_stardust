@@ -106,19 +106,15 @@ nav a[aria-current="page"] {
   font-weight: var(--font-weight-semi-bold);
 }
 
-/* Moving from one note to another, the contents doesn't jump: the entry
-   being left folds its sections away as the one arrived at opens, and the
-   entries between slide to their new places. Each entry is named in the
-   template (view-transition-name), so the browser pairs it across the two
-   pages; the page itself swaps at once. */
+/* Moving from one note to another, the page crossfades and the contents
+   doesn't jump: the entry being left folds its sections away as the one
+   arrived at opens, and the entries between slide to their new places. Each
+   entry is named in the template (view-transition-name), so the browser
+   pairs it across the two pages. */
 @media (prefers-reduced-motion: no-preference) {
   @view-transition {
     navigation: auto;
   }
-}
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation: none;
 }
 /* The list labels slide with the entries above them. */
 nav #topics {

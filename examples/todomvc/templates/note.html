@@ -50,6 +50,10 @@
     <script>
       if (window.matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.classList.add('dark');
     </script>
+    {#- Moving between notes, the browser waits to show the new page until
+        its content is parsed, so the transition starts from the finished
+        page rather than a part of it. #}
+    <link rel="expect" href="#content" blocking="render">
     <link rel="stylesheet" href="/static/stellar.css?v={{ rev }}">
     <link rel="stylesheet" href="/static/notes.css?v={{ rev }}">
     <style>{{ code | safe }}</style>
@@ -71,13 +75,11 @@
         </ul>
       </details>
     </nav>
-    <main>
-      {{ body | safe }}
-    </main>
     <script>
       // The contents is a sidebar when the page is wide, always open, and a
       // collapsed <details> at the top when narrow, closing again once a
-      // section is picked.
+      // section is picked. It runs before <main>, so the page is first shown
+      // with the contents already open or closed.
       const contents = document.querySelector('nav details');
       const wide = window.matchMedia('(min-width: 64rem)');
       const fit = () => { contents.open = wide.matches; };
@@ -86,7 +88,11 @@
       contents.addEventListener('click', (e) => {
         if (!wide.matches && e.target.closest('a')) contents.open = false;
       });
-
+    </script>
+    <main id="content">
+      {{ body | safe }}
+    </main>
+    <script>
       // Copy buttons, one per code block (figure > button): copy the code,
       // show a check for a moment. If the clipboard is refused, select the
       // code so it can be copied by hand.
