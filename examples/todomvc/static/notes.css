@@ -106,6 +106,36 @@ nav a[aria-current="page"] {
   font-weight: var(--font-weight-semi-bold);
 }
 
+/* Moving from one note to another, the contents doesn't jump: the entry
+   being left folds its sections away as the one arrived at opens, and the
+   entries between slide to their new places. Each entry is named in the
+   template (view-transition-name), so the browser pairs it across the two
+   pages; the page itself swaps at once. */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition {
+    navigation: auto;
+  }
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+/* The list labels slide with the entries above them. */
+nav #topics {
+  view-transition-name: topics;
+}
+nav #releases {
+  view-transition-name: releases;
+}
+/* An entry's before and after keep their own height, pinned to the top, so
+   clipping them to the entry's changing height reveals or hides its
+   sections instead of stretching them. */
+::view-transition-group(*) {
+  overflow: clip;
+  animation-duration: var(--anim-duration-slow);
+  animation-timing-function: var(--anim-ease-standard);
+}
+
 /* ---- headings ---------------------------------------------------- */
 
 /* Stellar's line-height tokens are absolute rems tuned to body sizes, so

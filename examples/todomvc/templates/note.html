@@ -5,7 +5,7 @@
     sections: [{title, id, subs}]}, subs being [{title, id, file}] (file:
     true for included code), with sections only for the page being read. -#}
 {%- macro entry(r) %}
-          <li>
+          <li style="view-transition-name: note-{{ r.name }}">
             <a href="/notes/{{ r.name }}/" {% if r.current %}aria-current="page"{% endif %}>{{ r.name }}</a>
             {%- if r.sections %}
             <ul>
