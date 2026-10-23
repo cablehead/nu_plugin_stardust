@@ -66,24 +66,3 @@ events.watch {owner 1 subscription 10 waitset 3 token 42}   # receive
 events.watch {owner 2 registration 20 waitset 3 token 43}   # accept
 events.watch {owner 1 handle 30 waitset 3 token 44}         # read
 ```
-
-you pick each token. `ready` returns it when its call has something.
-
-all four calls then work the same way:
-
-1. open a waitset, set `notify`, and add each subscription, registration and exchange you want to wait on.
-2. when `notify` runs, call `ready` with a wait of 0 to take the ready tokens.
-3. for each token, make its call with a wait of 0 until it returns `TIMEOUT`. that rearms it.
-
-a token becomes ready once per `TIMEOUT`, and is in the ready set at most once, so the set never holds more tokens than there are sources. `notify` runs once each time the set goes from empty to not empty. when a source ends, its token becomes ready too, and its call reports `CANCELLED` or `CLOSED`.
-
-a client without callbacks can call `ready` with a wait instead, and wait on every source from one thread.
-
-`ready` returns tokens because the results have different types. a live query returns a `stardust_db_live_event`, and the `events` calls return documents. each call keeps its own result and errors. an `events.next` that returns the next result for a whole owner could still be added on top.
-
-`set_notify` would be the same as a waitset with one subscription in it. a later plugin with a call that waits could use the waitset too, with no new C function.
-
-open questions:
-
-- is there a `remove`, or does a source only leave when it ends?
-- one waitset per database, or as many as you like, say one per event loop?
