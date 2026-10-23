@@ -127,3 +127,62 @@ pub async fn receive(&self, options: &Document) -> Result<Document> {
 ```
 
 the `Signal` per subscription goes, and with it the binding's cap of 1024 subscriptions per CPU, past which subscribing returns `STARDUST_LOCKED`.
+
+## the python sdk {#python}
+
+today `register_subscription` gives each subscription its own `_Notify`, with its own C callback, and registers it with `subscription_set_notify`. with a waitset, each event loop opens one waitset, and each subscription joins it. its token is a slot in the loop's table of futures:
+
+```diff
+-notification = _Notify(loop)
+-owner._notification = notification
+-owner._library.call("db_subscription_set_notify", owner._pointer,
+-                    notification.callback, None)
++slot = loop_waitset(loop).insert()
++owner._slot = slot
++owner._library.call("db_waitset_add_subscription", slot.waitset, owner._pointer,
++                    slot.token)
+```
+
+`subscription.next()` keeps its shape. it takes a future from its slot, calls `subscription_next` with a zero wait on the `stardust-control` thread, and awaits the future if nothing was ready:
+
+```python
+while True:
+    future = owner._slot.waiter()
+    # subscription_next with max_wait_ticks 0
+    event = await _execute(function, (owner, timedelta(0)), {}, control=True)
+    if event is not None:
+        return event
+    await asyncio.wait_for(future, remaining)  # STARDUST_TIMEOUT
+```
+
+the one C callback per waitset hops to the event loop with `call_soon_threadsafe`, as `_Notify` does today. there it asks the waitset what's ready, and resolves those futures:
+
+```python
+async def drain(waitset):
+    while True:
+        # waitset_ready with max_wait_ticks 0
+        tokens = await _execute(waitset.ready, (64,), {}, control=True)
+        for token in tokens:
+            waitset.resolve(token)
+        if len(tokens) < 64:
+            break
+```
+
+the `events` calls change the most. today `events.receive` blocks a `stardust-call` thread for up to `maxWait`, and only 4 calls can run at once, so a fifth waiting call fails with `STARDUST_LOCKED`. with a waitset, each source joins once, with `waitset_add_plugin`, and the call waits the way `subscription.next()` does:
+
+```python
+async def receive(self, options):
+    # waitset_add_plugin, once per source
+    slot = self._database.watch("events", "receive", options)
+    while True:
+        future = slot.waiter()
+        try:
+            # plugin_call without maxWait
+            return await _execute(plugin_call, ("events", "receive", options), {}, control=True)
+        except StardustError as error:
+            if error.code != "timeout":
+                raise
+        await future  # STARDUST_TIMEOUT
+```
+
+a waiting `events` call then holds a future, not a thread, so the limit of 4 no longer caps how many can wait.
