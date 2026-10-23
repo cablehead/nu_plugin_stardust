@@ -15,7 +15,7 @@ in [alpha-2610230456](../alpha-2610230456/), a live query can call you back when
 
 ## the ask {#ask}
 
-replace the live query's `set_notify` with a waitset. a waitset holds one `notify` for everything an async program waits on, live queries and plugin calls alike, and reports which of them are ready.
+replace `stardust_db_subscription_set_notify` with a waitset. a waitset holds one notify callback for everything an async program waits on, live queries and plugin calls alike, and reports which of them are ready.
 
 the change to `stardust.h`. lines starting `-` are removed, lines starting `+` are added:
 
@@ -35,7 +35,7 @@ the change to `stardust.h`. lines starting `-` are removed, lines starting `+` a
 +void stardust_db_waitset_release(stardust_db_waitset *ws);
 ```
 
-`add_plugin` takes what you'd pass to `stardust_db_plugin_call` for the call it watches, without `maxWait`. for the events plugin:
+`stardust_db_waitset_add_plugin` takes what you'd pass to `stardust_db_plugin_call` for the call it watches, without `maxWait`. for the events plugin:
 
 | operation | request | waits for |
 |---|:---|:---|
@@ -47,15 +47,15 @@ the change to `stardust.h`. lines starting `-` are removed, lines starting `+` a
 
 two things are new:
 
-- each source gets a token, a number you pick when you add it. today each subscription has its own `notify`, and its `ctx` tells you which one is ready. a waitset has one `notify` for all its sources, so `ready` hands back the tokens of the ones that are ready instead. you then make those calls with a wait of 0.
-- `ready` with a wait above 0 blocks, so a program without callbacks can wait on everything from one thread.
+- each source gets a token, a number you pick when you add it with `stardust_db_waitset_add_subscription` or `stardust_db_waitset_add_plugin`. today each subscription has its own notify callback, set with `stardust_db_subscription_set_notify`, and its `ctx` tells you which one is ready. a waitset has one notify callback for all its sources, set with `stardust_db_waitset_set_notify`, so `stardust_db_waitset_ready` hands back the tokens of the ones that are ready instead. you then make those calls without waiting: `stardust_db_subscription_next` with `max_wait_ticks` 0, or `stardust_db_plugin_call` without `maxWait`.
+- `stardust_db_waitset_ready` with `max_wait_ticks` above 0 blocks, so a program without callbacks can wait on everything from one thread.
 
-the rest is the same as `set_notify` today, for every source in the waitset:
+the rest is the same as `stardust_db_subscription_set_notify` today, for every source in the waitset:
 
-- a source becomes ready again only after its call returns `TIMEOUT`. it appears in the ready list at most once.
-- `notify` fires once each time the ready list goes from empty to not empty. it can run on any thread, and must not call stardust.
-- a source that ends (cancelled, unsubscribed, closed) becomes ready, and its call then returns `CANCELLED` or `CLOSED`.
+- a source becomes ready again only after its call returns `STARDUST_TIMEOUT`. it appears in the ready list at most once.
+- the notify callback fires once each time the ready list goes from empty to not empty. it can run on any thread, and must not call stardust.
+- a source that ends (cancelled, unsubscribed, closed) becomes ready, and its call then returns `STARDUST_CANCELLED` or `STARDUST_CLOSED`.
 
 ## what it breaks {#breaks}
 
-removing `set_notify` breaks the Rust and Python bindings. both build their async `next` on it. each would move to a waitset holding one subscription.
+removing `stardust_db_subscription_set_notify` breaks the Rust and Python bindings. both build their async wait for `stardust_db_subscription_next` on it. each would move to a waitset holding one subscription.
