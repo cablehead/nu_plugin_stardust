@@ -30,18 +30,18 @@ the change to `stardust.h`. lines starting `-` are removed, lines starting `+` a
 +int64_t stardust_db_waitset_open(stardust_db *db, stardust_db_waitset **output);
 +int64_t stardust_db_waitset_set_notify(stardust_db_waitset *ws, stardust_db_waitset_notify notify, void *ctx);
 +int64_t stardust_db_waitset_add_subscription(stardust_db_waitset *ws, stardust_db_subscription *sub, int64_t token);
-+int64_t stardust_db_waitset_add_plugin(stardust_db_waitset *ws, stardust_bytes plugin_name, const stardust_document *target, int64_t token);
++int64_t stardust_db_waitset_add_plugin(stardust_db_waitset *ws, stardust_bytes plugin_name, stardust_bytes operation, const stardust_document *request, int64_t token);
 +int64_t stardust_db_waitset_ready(stardust_db_waitset *ws, int64_t max_wait_ticks, int64_t *tokens, int64_t capacity, int64_t *count);
 +void stardust_db_waitset_release(stardust_db_waitset *ws);
 ```
 
-`add_plugin` takes the same target document you'd pass to the call. for the events plugin:
+`add_plugin` takes what you'd pass to `stardust_db_plugin_call` for the call it watches, without `maxWait`. for the events plugin:
 
-| target | the call it watches |
-|---|:---|
-| `{owner 1 subscription 10}` | `events.receive` |
-| `{owner 2 registration 20}` | `events.accept` |
-| `{owner 1 handle 30}` | `events.read` |
+| operation | request | waits for |
+|---|:---|:---|
+| `receive` | `{owner 1 subscription 10}` | the next published event |
+| `accept` | `{owner 2 registration 20}` | the next call to a subject you registered |
+| `read` | `{owner 1 handle 30}` | the next message in an exchange |
 
 ## how it behaves {#behaves}
 
