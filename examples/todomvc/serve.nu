@@ -231,13 +231,16 @@ let legacy = changes $db
   }
 
 # Cache-buster for static/: a hash of its files, so a URL with ?v=<rev>
-# changes exactly when a file does.
-let rev = glob ($here | path join static "*")
+# changes exactly when a file does. Taken on each page, not once at start, so
+# an edit to static/ shows without a restart.
+def static-rev []: nothing -> string {
+  glob ($here | path join static "*")
   | sort
   | each { open --raw $in | hash md5 }
   | str join
   | hash md5
   | str substring 0..7
+}
 
 let index = .mj compile ($here | path join templates/index.html)
 let section = .mj compile ($here | path join templates/todos.html)
@@ -270,10 +273,18 @@ def topics [dir: string]: nothing -> list<string> {
   notes $dir | where release != null | get name | sort
 }
 
+# A heading's id when it doesn't give one: its title, lowercase, with each
+# run of other characters as one -. "a suggestion: a waitset" is
+# a-suggestion-a-waitset.
+def heading-slug []: string -> string {
+  str downcase | str replace -a -r '[^a-z0-9]+' '-' | str trim --char '-'
+}
+
 # A notes page, read with from md: meta, its frontmatter; title, its first
 # heading; intro, the markdown before the first section; and blocks, one per
 # second- or third-level heading, with its title, id ({#id} at the end of
-# the heading), level, and markdown, from the heading to the next one.
+# the heading, or its heading-slug), level, and markdown, from the heading to
+# the next one, its heading given the id.
 # meta.code maps a file beside the page to the id of the block it ends, e.g.
 # {leak.c: per-thread}.
 def note-read []: string -> record {
@@ -292,11 +303,15 @@ def note-read []: string -> record {
         let start = $starts | get $h.index
         let end = $starts | skip ($h.index + 1) | get 0? | default ($lines | length)
         let parts = $h.item.content | split row " {#"
+        let id = $parts.1? | default "" | str trim --right --char "}"
+        let id = if $id == "" { $parts.0 | heading-slug } else { $id }
+        let block = $lines | slice $start..<$end
+        let head = if ($parts.1? == null) { $"($block.0) {#($id)}" } else { $block.0 }
         {
           title: $parts.0
-          id: ($parts.1? | default "" | str trim --right --char "}")
+          id: $id
           level: $h.item.attributes.level
-          markdown: ($lines | slice $start..<$end | str join "\n")
+          markdown: ($block | skip 1 | prepend $head | str join "\n")
         }
       }
     )
@@ -366,8 +381,8 @@ def code-file [dir: string, file: string, from?: string]: nothing -> string {
 }
 
 # A page read by note-read, as HTML: each part through .md, each block
-# followed by the code meta.code ends it with, and a copy button on every
-# code block. The code is beside the page, or in meta.code_from, a release
+# followed by the code meta.code ends it with, each section heading a link to
+# itself, and a copy button on every code block. The code is beside the page, or in meta.code_from, a release
 # directory relative to it.
 def note-html [dir: string]: record -> string {
   let page = $in
@@ -386,6 +401,7 @@ def note-html [dir: string]: record -> string {
   }
   | prepend ($page.intro | .md | get __html)
   | str join "\n"
+  | str replace -a -r '<(h[23]) id="([^"]+)">(.*?)</h[23]>' '<$1 id="$2"><a href="#$2">$3</a></$1>'
   | str replace -a '<pre>' $'<figure><button type="button" aria-label="copy">($copy_icon)</button><pre>'
   | str replace -a '</pre>' '</pre></figure>'
 }
@@ -544,7 +560,7 @@ def match-notes-route [dir: string] {
 
     (
       route {method: GET path: "/"} {|req ctx|
-        {datastar: $DATASTAR_JS_PATH url: (site-url $req) rev: $rev} | .mj render $index
+        {datastar: $DATASTAR_JS_PATH url: (site-url $req) rev: (static-rev)} | .mj render $index
       }
     )
 
@@ -559,7 +575,7 @@ def match-notes-route [dir: string] {
         } else if $ctx.file == "" {
           open --raw ($notes_dir | path join $ctx.release index.md)
           | decode utf-8
-          | note-page $note $code_css $rev (note-contents $notes_dir $ctx.release) ($notes_dir | path join $ctx.release) $"(site-url $req)notes/($ctx.release)/"
+          | note-page $note $code_css (static-rev) (note-contents $notes_dir $ctx.release) ($notes_dir | path join $ctx.release) $"(site-url $req)notes/($ctx.release)/"
         } else if ($ctx.file | str ends-with ".png") {
           .static $here $req.path
         } else {
