@@ -8,8 +8,8 @@
   const durations = ['instant', 'fast', 'base', 'slow', '-2', '-1', '0', '1', '2', '3', '4'];
   const eases = ['standard', 'emphasized', 'entrance', 'pulse', 'linear', 'bounce'];
   const fields = [
-    {key: 'contents', label: 'contents', options: durations, token: (v) => `--anim-duration-${v}`, fallback: 'slow'},
-    {key: 'page', label: 'page fade', options: durations, token: (v) => `--anim-duration-${v}`, fallback: 'slow'},
+    {key: 'contents', label: 'contents', options: durations, token: (v) => `--anim-duration-${v}`, fallback: 'fast'},
+    {key: 'page', label: 'page fade', options: durations, token: (v) => `--anim-duration-${v}`, fallback: 'fast'},
     {key: 'ease', label: 'easing', options: eases, token: (v) => `--anim-ease-${v}`, fallback: 'standard'},
   ];
 
