@@ -56,7 +56,7 @@ if every call not placed yet that touches a database also moves, 37 calls go (48
 
 the events plugin's owner, subscribe and receive operations are also removed. they're called through `plugin_call`, so they aren't in `stardust.h` or this diff.
 
-## a live query, today and after {#live-query}
+## subscribing to a live query {#live-query}
 
 today, a live query needs a query handle, a subscription and a notify callback, and a call to fetch each result:
 
@@ -81,7 +81,7 @@ stardust_poll(db, 0, &responses);
 
 there's no query handle, subscription handle or callback per subscription, and no call to fetch the result. `cancel` takes the id.
 
-## events.receive, today and after {#receive}
+## receiving events {#receive}
 
 today, `receive` needs an owner and a subscription, each made with `plugin_call`, and blocks a thread for up to `maxWait`:
 
