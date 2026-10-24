@@ -249,7 +249,8 @@ let section = .mj compile ($here | path join templates/todos.html)
 # files it links to beside it. Pages end in /, so relative links work the
 # same here as on GitHub. A note on a topic rather than a release has the
 # same layout, with the release it applies to in its frontmatter (release:
-# alpha-2610212237).
+# alpha-2610212237). Topic notes on one subject form a thread, named in
+# their frontmatter with their place in it (thread: async abi, part: 2).
 let note = .mj compile ($here | path join templates/note.html)
 # Highlighted code: OneHalf, dark or light to match the page.
 let code_css = $"html.dark {(.highlight theme OneHalfDark)}\nhtml:not\(.dark) {(.highlight theme OneHalfLight)}"
@@ -259,7 +260,7 @@ let notes_dir = $here | path join notes
 def notes [dir: string]: nothing -> list<record> {
   ls $dir | where type == dir | get name | each {|d|
     let meta = open --raw ($d | path join index.md) | decode utf-8 | from md | where element == yaml | get content.0? | default "{}" | from yaml
-    {name: ($d | path basename) release: $meta.release?}
+    {name: ($d | path basename) release: $meta.release? thread: ($meta.thread? | default "topics") part: ($meta.part? | default 0)}
   }
 }
 
@@ -268,9 +269,15 @@ def releases [dir: string]: nothing -> list<string> {
   notes $dir | where release == null | get name | sort --reverse
 }
 
-# The topic notes, by name.
-def topics [dir: string]: nothing -> list<string> {
-  notes $dir | where release != null | get name | sort
+# The topic notes, as threads by name, each {name, notes}, its notes in
+# order by part.
+def threads [dir: string]: nothing -> list<record> {
+  notes $dir
+  | where release != null
+  | group-by thread
+  | transpose name notes
+  | sort-by name
+  | each {|t| {name: $t.name notes: ($t.notes | sort-by part name | get name)} }
 }
 
 # A heading's id when it doesn't give one: its title, lowercase, with each
@@ -350,7 +357,7 @@ def note-sections []: record -> list<record> {
   }
 }
 
-# The contents for a page: the topics, then every release, newest first,
+# The contents for a page: the threads, then every release, newest first,
 # each with the sections of the one being read (current).
 def note-contents [dir: string, current: string]: nothing -> record {
   let entry = {|n|
@@ -360,7 +367,7 @@ def note-contents [dir: string, current: string]: nothing -> record {
     {name: $n current: ($n == $current) sections: $sections}
   }
   {
-    topics: (topics $dir | each {|n| do $entry $n })
+    threads: (threads $dir | each {|t| {name: $t.name id: ($t.name | heading-slug) notes: ($t.notes | each {|n| do $entry $n })} })
     releases: (releases $dir | each {|n| do $entry $n })
   }
 }
@@ -420,7 +427,7 @@ def note-page [note: any, code_css: string, rev: string, contents: record, dir: 
     body: ($page | note-html $dir)
     code: $code_css
     rev: $rev
-    topics: $contents.topics
+    threads: $contents.threads
     releases: $contents.releases
   }
   | .mj render $note

@@ -1,7 +1,8 @@
 {#- A notes page: title, description, url and image (absolute, or none) for
     its meta tags, and body, the HTML rendered from its markdown. code is
-    the stylesheet for highlighted code blocks. topics and releases are the
-    contents, releases newest first, each a list of {name, current,
+    the stylesheet for highlighted code blocks. threads and releases are the
+    contents: threads a list of {name, id, notes}, releases newest first,
+    notes and releases each a list of {name, current,
     sections: [{title, id, subs}]}, subs being [{title, id, file}] (file:
     true for included code), with sections only for the page being read. -#}
 {%- macro entry(r) %}
@@ -85,12 +86,12 @@
       <details>
         <summary>contents</summary>
         <p><a href="/">todomvc</a> / <a href="/notes/">notes</a></p>
-        {%- if topics %}
-        <p id="topics">topics</p>
-        <ul aria-labelledby="topics">
-          {%- for r in topics %}{{ entry(r) }}{% endfor %}
+        {%- for t in threads %}
+        <p id="thread-{{ t.id }}" style="view-transition-name: thread-{{ t.id }}">{{ t.name }}</p>
+        <ul aria-labelledby="thread-{{ t.id }}">
+          {%- for r in t.notes %}{{ entry(r) }}{% endfor %}
         </ul>
-        {%- endif %}
+        {%- endfor %}
         <p id="releases">releases</p>
         <ul aria-labelledby="releases">
           {%- for r in releases %}{{ entry(r) }}{% endfor %}

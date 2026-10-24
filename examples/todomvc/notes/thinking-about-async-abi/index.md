@@ -1,5 +1,7 @@
 ---
 release: alpha-2610230456
+thread: async abi
+part: 1
 description: "our ask: a waitset, so live queries and the events calls are async the same way"
 ---
 # thinking about an async abi

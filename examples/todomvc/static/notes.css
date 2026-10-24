@@ -116,10 +116,8 @@ nav a[aria-current="page"] {
     navigation: auto;
   }
 }
-/* The list labels slide with the entries above them. */
-nav #topics {
-  view-transition-name: topics;
-}
+/* The list labels slide with the entries above them. A thread's label is
+   named in the template, like the entries. */
 nav #releases {
   view-transition-name: releases;
 }
