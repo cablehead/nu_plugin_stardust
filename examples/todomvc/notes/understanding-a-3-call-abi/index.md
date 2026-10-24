@@ -23,8 +23,6 @@ this note compares the proposal with `stardust.h` on [alpha-2610230456](../alpha
 
 if every call not placed yet that touches a database also moves, 37 calls go (48%). that leaves 43 calls: 40 that never wait on a database, and the 3 that do all of a database's work.
 
-[the waitset ask](../thinking-about-async-abi/) removes 1 call and adds 6.
-
 ## removed and added {#delta}
 
 the 16 removed calls and the 3 added calls, with arguments cut short:
