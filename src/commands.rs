@@ -151,9 +151,10 @@ fn params(call: &EvaluatedCall) -> Result<Option<Document>, LabeledError> {
 fn run_options(call: &EvaluatedCall) -> Result<RunOptions, LabeledError> {
     let mut options = RunOptions::default();
     if let Some(n) = call.get_flag::<i64>("page-size")? {
-        options.page_size = u32::try_from(n).map_err(|_| {
-            LabeledError::new("invalid page size").with_label("must be 0 or more", call.head)
-        })?;
+        if n < 0 {
+            return Err(LabeledError::new("invalid page size").with_label("must be 0 or more", call.head));
+        }
+        options.page_size = n;
     }
     if let Some(tx) = call.get_flag::<i64>("as-of")? {
         options.as_of = tx;

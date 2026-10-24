@@ -6,7 +6,7 @@ run queries as streaming nu tables, and follow live query results, all from
 the nu prompt.
 
 This is a prototype against Stardust's Rust binding (release
-`alpha-2610212237`). It doesn't include Stardust itself: you need your own
+`alpha-2610240014`). It doesn't include Stardust itself: you need your own
 release download and license token.
 
 ## Requirements
@@ -17,11 +17,11 @@ release download and license token.
 - A Stardust release for your platform, extracted **next to this repo**:
 
   ```
-  ~/stardust-alpha-2610212237/   # the release
+  ~/stardust-alpha-2610240014/   # the release
   ~/nu_plugin_stardust/          # this repo
   ```
 
-  `Cargo.toml` points at `../stardust-alpha-2610212237/abi/bindings/rust`.
+  `Cargo.toml` points at `../stardust-alpha-2610240014/abi/bindings/rust`.
   Edit that path for another release or location.
 - A Stardust license token (the `v4.public.…` text from your account page).
 

@@ -5,7 +5,7 @@
 
 use std/assert
 
-const data = path self ../stardust-alpha-2610212237/abi/examples/data
+const data = path self ../stardust-alpha-2610240014/abi/examples/data
 
 def main [] {
     print $"license: (stardust license | select active failure name license expires)"
