@@ -54,7 +54,7 @@ if every call not placed yet that touches a database also moves, 37 calls go (48
  /* stardust_db_options gains responses, wake and wake_ctx */
 ```
 
-the events plugin's owners, subscription ids and receive waits go too. they're plugin operations, not C calls, so they leave no lines in the header.
+the events plugin's owner, subscribe and receive operations are also removed. they're called through `plugin_call`, so they aren't in `stardust.h` or this diff.
 
 ## a live query, today and after {#live-query}
 
