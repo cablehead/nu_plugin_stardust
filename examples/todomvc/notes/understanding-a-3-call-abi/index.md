@@ -6,7 +6,7 @@ description: "delaney's proposal, as a delta from stardust.h today: every call t
 ---
 # understanding a 3 call abi
 
-in [delaney's proposal](../delaneys-execution-abi/), every call that does work in a database becomes one of three: `submit`, `poll` and `cancel`. this note shows the change from `stardust.h` on alpha-2610230456.
+in [delaney's proposal](../delaneys-execution-abi/), running a query, a write or a plugin operation is no longer a call of its own. it's a request document, and three calls handle every request: `submit` sends it, `poll` collects its results, and `cancel` stops it. this note shows the change from `stardust.h` on alpha-2610230456.
 
 names drop their `stardust_db_` prefix, except in code.
 
