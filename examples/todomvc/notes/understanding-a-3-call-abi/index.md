@@ -25,8 +25,6 @@ if every call not placed yet that touches a database also moves, 37 calls go (48
 
 ## removed and added {#delta}
 
-the 16 removed calls and the 3 added calls, with arguments cut short:
-
 ```diff
  /* queries: run, page through, subscribe */
 -int64_t stardust_db_query_run(stardust_db_query *query_handle, ...);
