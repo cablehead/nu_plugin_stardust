@@ -8,7 +8,7 @@ description: "delaney's proposal replaces the calls for queries, writes and plug
 
 [delaney's proposal](../delaneys-execution-abi/) replaces the calls for queries, writes and plugin operations with three calls: `submit` sends a request document, `poll` returns response documents, and `cancel` stops a request. the calls for opening and closing a database, licensing, documents, codecs and expressions don't change.
 
-this note compares the proposal with `stardust.h` on alpha-2610230456. names drop the `stardust_db_` prefix, except in code.
+this note compares the proposal with `stardust.h` on [alpha-2610230456](../alpha-2610230456/). names drop the `stardust_db_` prefix, except in code.
 
 ## how much changes {#numbers}
 
