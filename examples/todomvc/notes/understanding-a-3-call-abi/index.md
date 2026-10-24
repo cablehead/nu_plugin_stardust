@@ -21,8 +21,6 @@ this note compares the proposal with `stardust.h` on [alpha-2610230456](../alpha
 | unchanged | 38 | 49% |
 | added: `submit`, `poll`, `cancel` | 3 | |
 
-if every call not placed yet that touches a database also moves, 37 calls go (48%). that leaves 43 calls: 40 that never wait on a database, and the 3 that do all of a database's work.
-
 ## removed and added {#delta}
 
 ```diff
@@ -96,54 +94,8 @@ stardust_submit(db, /* [{type eventsSubscribe pattern todos.changed final true}]
 /* [{requestId 18 type eventsMessage result {subject todos.changed sequence 7 data {id 1}}}] */
 ```
 
-sending works the same way: `eventsPush` starts a stream, and later frames carry the stream's id. today's `events.accept` and `events.read` aren't in the example schema, so how calls and exchanges look is still open.
+## what this means {#means}
 
-## other changes {#means}
-
-- **ids, not handles.** stardust assigns each request an id. there's no handle to release.
-- **responses hold the results.** the queue has limits, set at open. each operation has a rule for a consumer that falls behind: it loses updates or is cancelled. other requests aren't held up.
-- **one reader per database.** one dispatcher calls `poll` and routes each response by id. a program that calls `poll` itself can't also use a binding's dispatcher.
-- **errors are documents.** a failed request returns an error response. C statuses only report `submit` or `poll` failing.
-- **operations are schemas.** each open database has a schema of request and response types: core plus the enabled plugins. a plugin adds types, not C calls.
-- **SDKs are generated** from the schemas.
-- **no compatibility layer.** every binding's queries, writes and plugin calls change.
-
-## the api after {#landscape}
-
-### async: one queue {#async}
-
-these go through `submit`, `poll` and `cancel`:
-
-- running a query, a page at a time (`query`, answered by `queryPage`s)
-- live queries (`querySubscribe`)
-- writes: `merge_patch` and mutations
-- every plugin operation: events, reactors (`reactorsStatus`), and the rest
-- describing the open database (`schema`)
-
-a request can return one response or many, and can take input as a stream.
-
-### sync: setup and local work {#sync}
-
-these 38 don't change. none of them waits on a database:
-
-| what | calls |
-|---|:---|
-| licensing and version | `activate`, `license`, `abi_version` |
-| the database's lifetime | `db_open`, `db_close`, `db_retain`, `db_release` |
-| documents | `document_*`, `document_builder_*` |
-| codecs | `parse`, `serialize`, `text_*`, `pointer_parse`, `pointer_format` |
-| expressions and macros, outside a database | `expr_*`, `macro_expand`, `macro_build` |
-| results of those | `result_take_document`, `result_error`, `result_release` |
-
-### not placed yet {#open}
-
-the proposal doesn't place these 23:
-
-- **plugin byte streams** (`plugin_stream_*`, 6 calls). they stay until they have "explicit bounded-chunk contracts", then move to the queue.
-- **prepared handles**: `query_open`, `query_release`, `mutation_open`, `mutation_release`. the example requests name a stored definition by `path`, with no handle, so the handles may go, and inline definitions may become part of a request.
-- **reads**: `read_entity`, `definition_get`, `definition_list`, `plan`.
-- **other writes**: `definition_patch`, and `bulk_begin`, `bulk_add`, `bulk_finish`, `bulk_abort`.
-- **other waits**: `indexes_sync`, which blocks up to `max_wait_ticks`.
-- **in a database, or not**: `db_expression_build`, `plugins`, `schema_validate`.
-
-if everything that touches a database becomes a request, all of these move except `plugins` and `schema_validate`. this is a question for Delaney.
+- **calls that run on an open database become async. the rest stay sync.** queries, live queries, writes and plugin operations become requests through `submit`, `poll` and `cancel`. the other 38 calls don't change.
+- **results are pushed, not pulled.** today a result stays in stardust until a call asks for it. in the proposal it goes on a queue with limits, set at open. a consumer that falls behind loses updates, or the request is cancelled. only one dispatcher can read the queue.
+- **the line isn't settled.** the proposal doesn't place 23 calls: `read_entity`, `definition_get`, `definition_list`, `plan`, `definition_patch`, the `bulk_*` calls, `indexes_sync`, `query_open`, `query_release`, `mutation_open`, `mutation_release`, the `plugin_stream_*` calls, `db_expression_build`, `plugins` and `schema_validate`. if every call that touches a database becomes a request, all of them move except `plugins` and `schema_validate`. this is the question for Delaney.
