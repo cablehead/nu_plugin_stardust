@@ -54,8 +54,6 @@ if every call not placed yet that touches a database also moves, 37 calls go (48
  /* stardust_db_options gains responses, wake and wake_ctx */
 ```
 
-the events plugin's owner, subscribe and receive operations are also removed. they're called through `plugin_call`, so they aren't in `stardust.h` or this diff.
-
 ## subscribing to a live query {#live-query}
 
 today, a live query needs a query handle, a subscription and a notify callback, and a call to fetch each result:
