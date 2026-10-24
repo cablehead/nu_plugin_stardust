@@ -2,22 +2,13 @@
 release: alpha-2610230456
 thread: async abi
 part: 3
-description: "a database's work as requests through submit, poll and cancel: the delta from stardust.h today"
+description: "delaney's proposal replaces the calls for queries, writes and plugin operations with submit, poll and cancel"
 ---
 # understanding a 3 call abi
 
-three calls carry all of a database's work: `submit` sends a request, `poll` collects the results, `cancel` stops it. from [delaney's proposal](../delaneys-execution-abi/).
+[delaney's proposal](../delaneys-execution-abi/) replaces the calls for queries, writes and plugin operations with three calls: `submit` sends a request document, `poll` returns response documents, and `cancel` stops a request. the calls for opening and closing a database, licensing, documents, codecs and expressions don't change.
 
-which goes where:
-
-| what | how you call it |
-|:---|:---|
-| work an open database runs: queries, writes, plugin operations | a request, through the three calls |
-| everything else: opening and closing a database, licensing, documents, codecs, expressions | a dedicated function, as today |
-
-this note shows the change from `stardust.h` on alpha-2610230456.
-
-names drop the `stardust_db_` prefix, except in code.
+this note compares the proposal with `stardust.h` on alpha-2610230456. names drop the `stardust_db_` prefix, except in code.
 
 ## how much changes {#numbers}
 
@@ -32,11 +23,11 @@ names drop the `stardust_db_` prefix, except in code.
 
 if every call not placed yet that touches a database also moves, 37 calls go (48%). that leaves 43 calls: 40 that never wait on a database, and the 3 that do all of a database's work.
 
-for scale, [the waitset ask](../thinking-about-async-abi/) removes 1 call and adds 6.
+[the waitset ask](../thinking-about-async-abi/) removes 1 call and adds 6.
 
-## the delta {#delta}
+## removed and added {#delta}
 
-the calls the proposal names, removed, and the three that replace them. arguments are cut short:
+the 16 removed calls and the 3 added calls, with arguments cut short:
 
 ```diff
  /* queries: run, page through, subscribe */
@@ -71,7 +62,7 @@ the events plugin's owners, subscription ids and receive waits go too. they're p
 
 ## a live query, today and after {#live-query}
 
-today. you open the query, subscribe, set a notify, and on each notify fetch the result:
+today, a live query needs a query handle, a subscription and a notify callback, and a call to fetch each result:
 
 ```c
 stardust_db_query_open(db, &source, &query);
@@ -82,7 +73,7 @@ stardust_db_subscription_set_notify(sub, notify, ctx);
 stardust_db_subscription_next(sub, 0, &event);          /* the result */
 ```
 
-after. you submit a request, and stardust gives it an id. on a wake you poll, and the result is already in what comes back:
+in the proposal, a live query is a request. `submit` returns an id, and `poll` returns the results with that id:
 
 ```c
 stardust_submit(db, /* [{type querySubscribe path todos final true}] */ requests, &id);
@@ -92,17 +83,17 @@ stardust_poll(db, 0, &responses);
 /* [{requestId 17 type queryPage result {sequence 1 transaction 42 lastPage true rows [...]}}] */
 ```
 
-there's no query handle, no subscription handle, no callback per subscription, and no second call to fetch the result. the id tells the response apart from others, and is how you cancel it.
+there's no query handle, subscription handle or callback per subscription, and no call to fetch the result. `cancel` takes the id.
 
 ## events.receive, today and after {#receive}
 
-today. you create an owner and a subscription with `plugin_call`, then call `receive`, which blocks a thread for up to `maxWait`:
+today, `receive` needs an owner and a subscription, each made with `plugin_call`, and blocks a thread for up to `maxWait`:
 
 ```c
 stardust_db_plugin_call(db, "events", "receive", /* {owner 1 subscription 10 maxWait ...} */ request, &result);
 ```
 
-after. one request subscribes and keeps delivering. there's no owner, no subscription id and no receive call:
+in the proposal, one `eventsSubscribe` request returns messages until it's cancelled. there's no owner, subscription id or receive call:
 
 ```c
 stardust_submit(db, /* [{type eventsSubscribe pattern todos.changed final true}] */ requests, &id);
@@ -113,21 +104,21 @@ stardust_submit(db, /* [{type eventsSubscribe pattern todos.changed final true}]
 
 sending works the same way: `eventsPush` starts a stream, and later frames carry the stream's id. today's `events.accept` and `events.read` aren't in the example schema, so how calls and exchanges look is still open.
 
-## what it means {#means}
+## other changes {#means}
 
-- **ids, not handles.** a running query, subscription or plugin call is an id stardust assigns, not a handle you release. you cancel it by id.
-- **results arrive with the wake.** a response carries the result, so the queue needs limits, set at open, and each operation needs a rule for a consumer that falls behind. a slow consumer either loses updates or gets cancelled. it doesn't stall the others.
-- **one reader per database.** one dispatcher polls, and routes every response by id. a program that polls the queue itself can't also use the binding's dispatcher.
-- **errors are documents.** a failed request is an error response, not a C status. the C statuses are left for submit and poll failing.
-- **operations are schemas.** a request's `type` comes from the schema of the open database: core plus the enabled plugins. a plugin adds request and response types, and the results go into the same queue.
-- **SDKs are generated.** the bindings' methods are generated from the schemas, not written by hand around each C call.
-- **nothing stays compatible.** every query, write and plugin call in every binding changes, and there's no compatibility layer.
+- **ids, not handles.** stardust assigns each request an id. there's no handle to release.
+- **responses hold the results.** the queue has limits, set at open. each operation has a rule for a consumer that falls behind: it loses updates or is cancelled. other requests aren't held up.
+- **one reader per database.** one dispatcher calls `poll` and routes each response by id. a program that calls `poll` itself can't also use a binding's dispatcher.
+- **errors are documents.** a failed request returns an error response. C statuses only report `submit` or `poll` failing.
+- **operations are schemas.** each open database has a schema of request and response types: core plus the enabled plugins. a plugin adds types, not C calls.
+- **SDKs are generated** from the schemas.
+- **no compatibility layer.** every binding's queries, writes and plugin calls change.
 
 ## the api after {#landscape}
 
 ### async: one queue {#async}
 
-everything that does work in a database, or waits on it, goes through `submit`, `poll` and `cancel`:
+these go through `submit`, `poll` and `cancel`:
 
 - running a query, a page at a time (`query`, answered by `queryPage`s)
 - live queries (`querySubscribe`)
@@ -135,11 +126,11 @@ everything that does work in a database, or waits on it, goes through `submit`, 
 - every plugin operation: events, reactors (`reactorsStatus`), and the rest
 - describing the open database (`schema`)
 
-a request can be one call and one answer, a stream of answers, or a stream both ways. they all have one shape.
+a request can return one response or many, and can take input as a stream.
 
 ### sync: setup and local work {#sync}
 
-these 38 stay as they are. none of them waits on a database:
+these 38 don't change. none of them waits on a database:
 
 | what | calls |
 |---|:---|
@@ -149,8 +140,6 @@ these 38 stay as they are. none of them waits on a database:
 | codecs | `parse`, `serialize`, `text_*`, `pointer_parse`, `pointer_format` |
 | expressions and macros, outside a database | `expr_*`, `macro_expand`, `macro_build` |
 | results of those | `result_take_document`, `result_error`, `result_release` |
-
-so the sync api is setup, plus work on documents in the calling process.
 
 ### not placed yet {#open}
 
@@ -163,4 +152,4 @@ the proposal doesn't place these 23:
 - **other waits**: `indexes_sync`, which blocks up to `max_wait_ticks`.
 - **in a database, or not**: `db_expression_build`, `plugins`, `schema_validate`.
 
-if the rule is "anything that touches the database goes through the queue", all of them move except `plugins` and `schema_validate`, which don't touch a database. that's a question for Delaney.
+if everything that touches a database becomes a request, all of these move except `plugins` and `schema_validate`. this is a question for Delaney.
