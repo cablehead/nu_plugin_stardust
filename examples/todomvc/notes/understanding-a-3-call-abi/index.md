@@ -2,14 +2,18 @@
 release: alpha-2610230456
 thread: async abi
 part: 3
-description: "delaney's proposal, as a delta from stardust.h today: every call that does work in a database becomes submit, poll and cancel"
+description: "a database's work as requests through submit, poll and cancel: the delta from stardust.h today"
 ---
 # understanding a 3 call abi
 
-in [delaney's proposal](../delaneys-execution-abi/), the rule is:
+three calls carry all of a database's work: `submit` sends a request, `poll` collects its results, `cancel` stops it. from [delaney's proposal](../delaneys-execution-abi/).
 
-- **a request**: work an open database runs for you. queries, writes, plugin operations. `submit` sends it, `poll` collects its results, `cancel` stops it.
-- **its own call**: everything else. opening and closing a database, licensing, and documents, codecs and expressions in your own process.
+which goes where:
+
+| what | how you call it |
+|:---|:---|
+| work an open database runs: queries, writes, plugin operations | a request, through the three calls |
+| everything else: opening and closing a database, licensing, documents, codecs, expressions | its own function, as today |
 
 this note shows the change from `stardust.h` on alpha-2610230456.
 
@@ -21,8 +25,8 @@ names drop their `stardust_db_` prefix, except in code.
 
 | calls | count | of 77 |
 |:---|---|---|
-| removed: the ones his replacement table names | 16 | 21% |
-| not placed yet by his proposal | 23 | 30% |
+| removed: named in the proposal | 16 | 21% |
+| not placed yet | 23 | 30% |
 | unchanged | 38 | 49% |
 | added: `submit`, `poll`, `cancel` | 3 | |
 
@@ -32,7 +36,7 @@ for scale, [ours](../thinking-about-async-abi/) removes 1 call and adds 6.
 
 ## the delta {#delta}
 
-the calls his replacement table names, removed, and the three that replace them. arguments are cut short:
+the calls the proposal names, removed, and the three that replace them. arguments are cut short:
 
 ```diff
  /* queries: run, page through, subscribe */
@@ -107,7 +111,7 @@ stardust_submit(db, /* [{type eventsSubscribe pattern todos.changed final true}]
 /* [{requestId 18 type eventsMessage result {subject todos.changed sequence 7 data {id 1}}}] */
 ```
 
-sending works the same way: `eventsPush` starts a stream, and later frames carry its id. today's `events.accept` and `events.read` aren't in his example schema, so how calls and exchanges look is still open.
+sending works the same way: `eventsPush` starts a stream, and later frames carry its id. today's `events.accept` and `events.read` aren't in the example schema, so how calls and exchanges look is still open.
 
 ## what it means {#means}
 
@@ -135,7 +139,7 @@ a request can be one call and one answer, a stream of answers, or a stream both 
 
 ### sync: setup and local work {#sync}
 
-his proposal keeps these 38 as plain calls. none of them waits on a database:
+these 38 stay as they are. none of them waits on a database:
 
 | what | calls |
 |---|:---|
@@ -150,13 +154,13 @@ so the sync api is setup, plus work on documents in your own process.
 
 ### not placed yet {#open}
 
-his proposal doesn't place these 23:
+the proposal doesn't place these 23:
 
 - **plugin byte streams** (`plugin_stream_*`, 6 calls). they stay until they have "explicit bounded-chunk contracts", then move to the queue.
-- **prepared handles**: `query_open`, `query_release`, `mutation_open`, `mutation_release`. his requests name a stored definition by `path`, with no handle, so the handles may go, and inline definitions may become part of a request.
+- **prepared handles**: `query_open`, `query_release`, `mutation_open`, `mutation_release`. the example requests name a stored definition by `path`, with no handle, so the handles may go, and inline definitions may become part of a request.
 - **reads**: `read_entity`, `definition_get`, `definition_list`, `plan`.
-- **writes he doesn't name**: `definition_patch`, and `bulk_begin`, `bulk_add`, `bulk_finish`, `bulk_abort`.
-- **waits he doesn't name**: `indexes_sync`, which blocks up to `max_wait_ticks`.
+- **other writes**: `definition_patch`, and `bulk_begin`, `bulk_add`, `bulk_finish`, `bulk_abort`.
+- **other waits**: `indexes_sync`, which blocks up to `max_wait_ticks`.
 - **in a database, or not**: `db_expression_build`, `plugins`, `schema_validate`.
 
 if the rule is "anything that touches the database goes through the queue", all of them move except `plugins` and `schema_validate`, which don't touch a database. that's a question for Delaney.
