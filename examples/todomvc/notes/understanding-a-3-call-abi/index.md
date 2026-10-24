@@ -6,18 +6,18 @@ description: "a database's work as requests through submit, poll and cancel: the
 ---
 # understanding a 3 call abi
 
-three calls carry all of a database's work: `submit` sends a request, `poll` collects its results, `cancel` stops it. from [delaney's proposal](../delaneys-execution-abi/).
+three calls carry all of a database's work: `submit` sends a request, `poll` collects the results, `cancel` stops it. from [delaney's proposal](../delaneys-execution-abi/).
 
 which goes where:
 
 | what | how you call it |
 |:---|:---|
 | work an open database runs: queries, writes, plugin operations | a request, through the three calls |
-| everything else: opening and closing a database, licensing, documents, codecs, expressions | its own function, as today |
+| everything else: opening and closing a database, licensing, documents, codecs, expressions | a dedicated function, as today |
 
 this note shows the change from `stardust.h` on alpha-2610230456.
 
-names drop their `stardust_db_` prefix, except in code.
+names drop the `stardust_db_` prefix, except in code.
 
 ## how much changes {#numbers}
 
@@ -32,7 +32,7 @@ names drop their `stardust_db_` prefix, except in code.
 
 if every call not placed yet that touches a database also moves, 37 calls go (48%). that leaves 43 calls: 40 that never wait on a database, and the 3 that do all of a database's work.
 
-for scale, [ours](../thinking-about-async-abi/) removes 1 call and adds 6.
+for scale, [the waitset ask](../thinking-about-async-abi/) removes 1 call and adds 6.
 
 ## the delta {#delta}
 
@@ -107,19 +107,19 @@ after. one request subscribes and keeps delivering. there's no owner, no subscri
 ```c
 stardust_submit(db, /* [{type eventsSubscribe pattern todos.changed final true}] */ requests, &id);
 
-/* every poll may carry its messages */
+/* every poll may carry messages for 18 */
 /* [{requestId 18 type eventsMessage result {subject todos.changed sequence 7 data {id 1}}}] */
 ```
 
-sending works the same way: `eventsPush` starts a stream, and later frames carry its id. today's `events.accept` and `events.read` aren't in the example schema, so how calls and exchanges look is still open.
+sending works the same way: `eventsPush` starts a stream, and later frames carry the stream's id. today's `events.accept` and `events.read` aren't in the example schema, so how calls and exchanges look is still open.
 
 ## what it means {#means}
 
 - **ids, not handles.** a running query, subscription or plugin call is an id stardust assigns, not a handle you release. you cancel it by id.
-- **results arrive with the wake.** a response carries its result, so the queue needs limits, set at open, and each operation needs a rule for a consumer that falls behind. a slow consumer either loses updates or gets cancelled. it doesn't stall the others.
+- **results arrive with the wake.** a response carries the result, so the queue needs limits, set at open, and each operation needs a rule for a consumer that falls behind. a slow consumer either loses updates or gets cancelled. it doesn't stall the others.
 - **one reader per database.** one dispatcher polls, and routes every response by id. a program that polls the queue itself can't also use the binding's dispatcher.
 - **errors are documents.** a failed request is an error response, not a C status. the C statuses are left for submit and poll failing.
-- **operations are schemas.** a request's `type` comes from the schema of the open database: core plus its enabled plugins. a plugin adds request and response types, and its results go into the same queue.
+- **operations are schemas.** a request's `type` comes from the schema of the open database: core plus the enabled plugins. a plugin adds request and response types, and the results go into the same queue.
 - **SDKs are generated.** the bindings' methods are generated from the schemas, not written by hand around each C call.
 - **nothing stays compatible.** every query, write and plugin call in every binding changes, and there's no compatibility layer.
 
@@ -150,7 +150,7 @@ these 38 stay as they are. none of them waits on a database:
 | expressions and macros, outside a database | `expr_*`, `macro_expand`, `macro_build` |
 | results of those | `result_take_document`, `result_error`, `result_release` |
 
-so the sync api is setup, plus work on documents in your own process.
+so the sync api is setup, plus work on documents in the calling process.
 
 ### not placed yet {#open}
 
