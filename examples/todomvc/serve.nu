@@ -416,12 +416,14 @@ def note-html [dir: string]: record -> string {
 # A notes page, with the notes contents beside it. dir holds the
 # page and the files its meta.code names; url is the page's own, absolute,
 # for its og tags. Its og image is og.png beside it, if there is one, and its
-# description meta.description.
+# description meta.description. meta.tables: words marks every table column
+# as words, for a note whose markdown isn't ours to mark (see notes.css).
 def note-page [note: any, code_css: string, rev: string, contents: record, dir: string, url: string]: string -> string {
   let page = note-read
   {
     title: $page.title
     description: ($page.meta.description? | default "")
+    tables: ($page.meta.tables? | default "")
     url: $url
     image: (if ($dir | path join og.png | path exists) { $"($url)og.png?v=($rev)" })
     body: ($page | note-html $dir)

@@ -4,7 +4,8 @@
     contents: threads a list of {name, id, notes}, releases newest first,
     notes and releases each a list of {name, current,
     sections: [{title, id, subs}]}, subs being [{title, id, file}] (file:
-    true for included code), with sections only for the page being read. -#}
+    true for included code), with sections only for the page being read.
+    tables, if given, is what every table column holds (words). -#}
 {%- macro entry(r) %}
           <li style="view-transition-name: note-{{ r.name }}">
             <a href="/notes/{{ r.name }}/" {% if r.current %}aria-current="page"{% endif %}>{{ r.name }}</a>
@@ -112,7 +113,7 @@
         if (!wide.matches && e.target.closest('a')) contents.open = false;
       });
     </script>
-    <main id="content">
+    <main id="content"{% if tables %} data-tables="{{ tables }}"{% endif %}>
       {{ body | safe }}
     </main>
     <script>

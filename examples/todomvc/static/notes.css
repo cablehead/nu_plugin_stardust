@@ -329,6 +329,14 @@ td[style*="left"] {
   white-space: normal;
   line-height: var(--font-line-height-1);
 }
+/* A note whose markdown isn't ours (a copy, verbatim) can't mark its
+   columns; tables: words in its frontmatter treats them all as words. */
+[data-tables="words"] :is(th, td) {
+  min-width: 16ch;
+  white-space: normal;
+  text-align: left;
+  line-height: var(--font-line-height-1);
+}
 th {
   font-weight: var(--font-weight-semi-bold);
   border-bottom: var(--border-width-2) solid var(--neutral-5);

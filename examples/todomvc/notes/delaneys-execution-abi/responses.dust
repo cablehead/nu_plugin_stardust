@@ -1,0 +1,17 @@
+[
+  {requestId 17
+   type      queryPage
+   result    {sequence    1
+              transaction 42
+              lastPage    true
+              rows        [{id 1}]}}
+  {requestId 18
+   type      eventsMessage
+   result    {subject  todos.changed
+              sequence 7
+              data     {id 1}}}
+  {requestId 19
+   type      completed
+   final     true
+   error     {code    failed
+              message Failed}}]

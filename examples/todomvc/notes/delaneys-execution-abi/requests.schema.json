@@ -1,0 +1,213 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Example Stardust requests: core, Events, and Reactors",
+  "definitions": {
+    "query": {
+      "type": "object",
+      "required": [
+        "type",
+        "path",
+        "final"
+      ],
+      "properties": {
+        "type": {
+          "const": "query"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parameters": {
+          "type": "object"
+        },
+        "pageSize": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "final": {
+          "const": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "querySubscribe": {
+      "type": "object",
+      "required": [
+        "type",
+        "path",
+        "final"
+      ],
+      "properties": {
+        "type": {
+          "const": "querySubscribe"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parameters": {
+          "type": "object"
+        },
+        "pageSize": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "final": {
+          "const": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "eventsSubscribe": {
+      "type": "object",
+      "required": [
+        "type",
+        "pattern",
+        "final"
+      ],
+      "properties": {
+        "type": {
+          "const": "eventsSubscribe"
+        },
+        "pattern": {
+          "type": "string"
+        },
+        "final": {
+          "const": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "reactorsStatus": {
+      "type": "object",
+      "required": [
+        "type",
+        "final"
+      ],
+      "properties": {
+        "type": {
+          "const": "reactorsStatus"
+        },
+        "final": {
+          "const": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "eventsPush": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/eventsPushStart"
+        },
+        {
+          "$ref": "#/definitions/eventsPushFrame"
+        }
+      ]
+    },
+    "eventsPushStart": {
+      "type": "object",
+      "required": [
+        "type",
+        "subject"
+      ],
+      "properties": {
+        "type": {
+          "const": "eventsPush"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "data": {},
+        "final": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "eventsPushFrame": {
+      "type": "object",
+      "required": [
+        "type",
+        "requestId"
+      ],
+      "properties": {
+        "type": {
+          "const": "eventsPush"
+        },
+        "data": {},
+        "final": {
+          "type": "boolean",
+          "default": false
+        },
+        "requestId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9223372036854775807,
+          "$comment": "Assigned by the database when the stream starts. Generated bindings populate continuation frames."
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "data"
+          ]
+        },
+        {
+          "required": [
+            "final"
+          ],
+          "properties": {
+            "final": {
+              "const": true
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "schema": {
+      "type": "object",
+      "required": [
+        "type",
+        "final"
+      ],
+      "properties": {
+        "type": {
+          "const": "schema"
+        },
+        "final": {
+          "const": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "request": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/query"
+        },
+        {
+          "$ref": "#/definitions/querySubscribe"
+        },
+        {
+          "$ref": "#/definitions/eventsSubscribe"
+        },
+        {
+          "$ref": "#/definitions/reactorsStatus"
+        },
+        {
+          "$ref": "#/definitions/eventsPush"
+        },
+        {
+          "$ref": "#/definitions/schema"
+        }
+      ]
+    }
+  },
+  "$comment": "Example schema for a database with Events and Reactors enabled. Generate the effective schema from core and the plugins enabled on the opened database.",
+  "type": "array",
+  "items": {
+    "$ref": "#/definitions/request"
+  }
+}

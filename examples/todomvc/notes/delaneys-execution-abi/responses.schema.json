@@ -1,0 +1,220 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Example Stardust responses: core, Events, and Reactors",
+  "type": "array",
+  "items": {
+    "$ref": "#/definitions/response"
+  },
+  "definitions": {
+    "error": {
+      "type": "object",
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "response": {
+      "type": "object",
+      "required": [
+        "requestId",
+        "type"
+      ],
+      "properties": {
+        "requestId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9223372036854775807
+        },
+        "type": {
+          "type": "string",
+          "pattern": "^[a-z][A-Za-z0-9]*$"
+        },
+        "final": {
+          "type": "boolean",
+          "default": false
+        },
+        "result": {},
+        "error": {
+          "$ref": "#/definitions/error"
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "required": [
+                "result"
+              ],
+              "not": {
+                "required": [
+                  "error"
+                ]
+              }
+            },
+            {
+              "required": [
+                "error"
+              ],
+              "not": {
+                "required": [
+                  "result"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "type": {
+                  "const": "queryPage"
+                },
+                "result": {
+                  "$ref": "#/definitions/queryPage"
+                }
+              }
+            },
+            {
+              "properties": {
+                "type": {
+                  "const": "eventsMessage"
+                },
+                "result": {
+                  "$ref": "#/definitions/eventsMessage"
+                }
+              }
+            },
+            {
+              "properties": {
+                "type": {
+                  "const": "reactorsStatus"
+                },
+                "result": {
+                  "type": "object"
+                }
+              }
+            },
+            {
+              "properties": {
+                "type": {
+                  "const": "completed"
+                },
+                "final": {
+                  "const": true
+                },
+                "result": {
+                  "type": "null"
+                }
+              },
+              "required": [
+                "final"
+              ]
+            },
+            {
+              "properties": {
+                "type": {
+                  "const": "schema"
+                },
+                "result": {
+                  "$ref": "#/definitions/schemaResult"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "queryPage": {
+      "type": "object",
+      "required": [
+        "sequence",
+        "transaction",
+        "rows"
+      ],
+      "properties": {
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "transaction": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "superseded": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "lastPage": {
+          "type": "boolean",
+          "default": false
+        },
+        "rows": {
+          "type": "array"
+        }
+      },
+      "additionalProperties": false
+    },
+    "eventsMessage": {
+      "type": "object",
+      "required": [
+        "subject",
+        "sequence",
+        "data"
+      ],
+      "properties": {
+        "subject": {
+          "type": "string"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "dropped": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "data": {}
+      },
+      "additionalProperties": false
+    },
+    "schemaResult": {
+      "type": "object",
+      "required": [
+        "requests",
+        "responses"
+      ],
+      "properties": {
+        "requests": {
+          "type": "object"
+        },
+        "responses": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$comment": "Example schema for a database with Events and Reactors enabled. Generate the effective schema from core and the plugins enabled on the opened database."
+}
