@@ -1,5 +1,6 @@
 mod commands;
 mod convert;
+mod objects;
 mod plugin;
 mod pool;
 

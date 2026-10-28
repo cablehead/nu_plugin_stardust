@@ -101,6 +101,29 @@ def main [] {
     stardust close $rdb
     print "plugins: ok"
 
+    # objects: bytes in by digest, named by a tree, streamed back
+    let odb = stardust open $"($dir)/objects.db" --plugins {objects: {}}
+    let hello = "Hello, objects" | stardust objects upload $odb
+    assert equal $hello.size 14
+    assert equal ("Hello, objects" | stardust objects upload $odb).deduplicated true
+    let made = [{name: notes} {name: hello.txt under: 1 digest: $hello.digest}] | stardust objects create $odb
+    assert equal $made.name [notes hello.txt]
+    assert equal (stardust objects open $odb $hello.digest) "Hello, objects"
+    assert equal (stardust objects open $odb $hello.digest --offset 7 --length 7) objects
+    assert equal (stardust objects path $odb $made.1.entity) [notes hello.txt]
+    assert equal (stardust objects files $odb $hello.digest) [$made.1.entity]
+    let big = 0..99999 | each { $"line ($in)\n" } | str join | stardust objects upload $odb
+    assert (((stardust objects manifest $odb $big.digest).chunks | length) > 0)
+    assert equal (stardust objects open $odb $big.digest | into binary | hash sha256) ($big.digest | get '#sha256')
+    let again = "Hello, again" | stardust objects upload $odb
+    let rev = (stardust objects get $odb $made.1.entity).revision
+    assert equal (stardust objects update $odb $made.1.entity $again.digest --expected-revision $rev).size 12
+    assert error { stardust objects update $odb $made.1.entity $hello.digest --expected-revision $rev }
+    stardust objects remove $odb $made.1.entity
+    assert equal (stardust objects open $odb $hello.digest) "Hello, objects"
+    stardust close $odb
+    print "objects: ok"
+
     rm -rf $dir
     print "all ok"
 }

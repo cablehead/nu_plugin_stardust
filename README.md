@@ -187,6 +187,22 @@ let db = stardust open ~/people.db --plugins {reactors: {}}
 stardust plugin-call $db reactors status
 ```
 
+### Objects
+
+The objects plugin stores payloads once per SHA-256 and names them with a
+tree of files and directories. `stardust objects <operation>` mirrors the
+SDK's typed view; `upload` and `open` stream bytes in and out.
+
+```nu
+let db = stardust open ~/files.db --plugins {objects: {}}
+let hello = 'Hello, objects' | stardust objects upload $db
+# => {digest: {#sha256: 95e84d…}, size: 14, deduplicated: false}
+[{name: notes} {name: hello.txt under: 1 digest: $hello.digest}] | stardust objects create $db
+stardust objects open $db $hello.digest                  # => Hello, objects
+open --raw big.iso | stardust objects upload $db         # streams; never held whole
+stardust objects children $db 1 | select name size
+```
+
 ### Values
 
 | nu | Stardust |
@@ -255,7 +271,8 @@ values, including a subscription receiving a commit from a background job:
 ```nu
 nu smoke.nu
 # eval: ok, patch: ok, query: ok, mutate: committed then no_change,
-# definitions: ok, documents: ok, subscribe: ok, time: ok, formats: ok, plugins: ok, all ok
+# definitions: ok, documents: ok, subscribe: ok, time: ok, formats: ok, plugins: ok,
+# objects: ok, all ok
 ```
 
 ## Layout
@@ -264,6 +281,8 @@ nu smoke.nu
 src/main.rs      serve_plugin
 src/plugin.rs    open databases, handles, license loading
 src/commands.rs  the commands
+src/objects.rs   stardust objects: the objects plugin, streams included
+src/pool.rs      the threads every Stardust call runs on
 src/convert.rs   nu values <-> Stardust documents (with unit tests)
 smoke.nu         end-to-end test
 examples/todomvc Datastar TodoMVC on http-nu, state in Stardust

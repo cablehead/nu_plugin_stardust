@@ -35,6 +35,7 @@ pub fn all() -> Vec<Box<dyn PluginCommand<Plugin = StardustPlugin>>> {
         Box::new(PluginCall),
     ];
     commands.extend(formats());
+    commands.extend(crate::objects::all());
     commands.into_iter().map(|command| Box::new(Pooled(command)) as Box<dyn PluginCommand<Plugin = StardustPlugin>>).collect()
 }
 
@@ -78,12 +79,12 @@ macro_rules! simple {
     };
 }
 
-fn db_arg(sig: Signature) -> Signature {
+pub(crate) fn db_arg(sig: Signature) -> Signature {
     sig.required("db", SyntaxShape::Any, "A database from `stardust open`.")
 }
 
 /// Adds `--format`, which says how string documents are written.
-fn format_flag(sig: Signature) -> Signature {
+pub(crate) fn format_flag(sig: Signature) -> Signature {
     sig.named(
         "format",
         SyntaxShape::String,
@@ -93,7 +94,7 @@ fn format_flag(sig: Signature) -> Signature {
 }
 
 /// The format of string documents, from `--format`.
-fn format(call: &EvaluatedCall) -> Result<Format, LabeledError> {
+pub(crate) fn format(call: &EvaluatedCall) -> Result<Format, LabeledError> {
     let Some(flag) = call.get_flag::<Spanned<String>>("format")? else {
         return Ok(Format::DUST);
     };
@@ -107,7 +108,7 @@ fn format(call: &EvaluatedCall) -> Result<Format, LabeledError> {
 
 /// A document from a nu value: a string is text in `format`, binary is TRON,
 /// and anything else is nu data.
-fn document(value: &Value, format: Format) -> Result<Document, LabeledError> {
+pub(crate) fn document(value: &Value, format: Format) -> Result<Document, LabeledError> {
     let span = value.span();
     match value {
         Value::String { val, .. } => stardust::parse(val, format).map_err(|e| sd_err(e, span)),
@@ -808,7 +809,7 @@ impl SimplePluginCommand for PluginCall {
         "Call an operation of a plugin the database enables."
     }
     fn extra_description(&self) -> &str {
-        "Plugins conventionally have status, and sync to wait for committed work. sync takes an optional {maxWait: <duration>} and checks once without it. Stream operations are not supported."
+        "Plugins conventionally have status, and sync to wait for committed work. sync takes an optional {maxWait: <duration>} and checks once without it. The objects plugin's stream operations are `stardust objects upload` and `stardust objects open`."
     }
     fn signature(&self) -> Signature {
         Self::sig()
