@@ -250,7 +250,10 @@ each viewer streams a live query over SSE.
 
 - **One process per database file.** Stardust takes an exclusive lock, so a
   second nu session can't open a database that another has open (`locked`).
-  Use jobs within one session, as above.
+  Use jobs within one session, as above. Within one session, opening a path
+  that's already open (with the same `--plugins`) returns another handle to
+  the same database, so http-nu's `-w` hot reload, which runs the script's
+  `stardust open` again while the old handler still holds it, works.
 - **Ctrl-C cancels every subscription in the plugin.** nu sends the interrupt
   to the whole plugin without saying which call it was for, so interrupting any
   foreground command also ends subscriptions running in background jobs.
@@ -270,9 +273,9 @@ values, including a subscription receiving a commit from a background job:
 
 ```nu
 nu smoke.nu
-# eval: ok, patch: ok, query: ok, mutate: committed then no_change,
+# restart: ok, eval: ok, patch: ok, query: ok, mutate: committed then no_change,
 # definitions: ok, documents: ok, subscribe: ok, time: ok, formats: ok, plugins: ok,
-# objects: ok, all ok
+# objects: ok, shared open: ok, all ok
 ```
 
 ## Layout

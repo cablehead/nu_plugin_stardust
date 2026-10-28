@@ -10,6 +10,21 @@ const data = path self ../stardust-alpha-2610240014/abi/examples/data
 def main [] {
     print $"license: (stardust license | select active failure name license expires)"
 
+    # a handle from before `plugin stop` is dropped after the restarted
+    # plugin opened the database again: that drop leaves the new one open.
+    # First, while nothing else holds the plugin open, so the stop ends it.
+    let rdir = mktemp -d
+    let restarted = do {
+      let old = stardust open $"($rdir)/restart.db"
+      plugin stop stardust
+      stardust open $"($rdir)/restart.db"
+    }
+    {'#_x': {n: 1}} | stardust patch $restarted | ignore
+    assert equal (stardust query $restarted '{find [?n] where [[?e n ?n]]}' | get n) [1]
+    print "restart: ok"
+    stardust close $restarted
+    rm -rf $rdir
+
     # from dust, through `open`
     let people = open $"($data)/people.dust"
     let live = open $"($data)/live.dust"
@@ -123,6 +138,20 @@ def main [] {
     assert equal (stardust objects open $odb $hello.digest) "Hello, objects"
     stardust close $odb
     print "objects: ok"
+
+    # open twice: one database, shared, as a hot reload (-w) opens it again
+    # while the old handler still holds it; it closes with its last handle
+    let path = $"($dir)/shared.db"
+    let h1 = stardust open $path
+    let h2 = stardust open $path
+    {'#_x': {n: 1}} | stardust patch $h1 | ignore
+    assert equal (stardust query $h2 '{find [?n] where [[?e n ?n]]}' | get n) [1]
+    stardust close $h1
+    assert equal (stardust query $h2 '{find [?n] where [[?e n ?n]]}' | get n) [1]
+    assert error { stardust open $path --plugins {objects: {}} }
+    stardust close $h2
+    print "shared open: ok"
+
 
     rm -rf $dir
     print "all ok"

@@ -229,7 +229,7 @@ impl SimplePluginCommand for Open {
         "Open (or create) a Stardust database and return a handle to it."
     }
     fn extra_description(&self) -> &str {
-        "The database stays open while any copy of the handle exists, or until `stardust close`."
+        "The database stays open while any copy of the handle exists, or until `stardust close`. Opening a path this session already has open (with the same --plugins) returns another handle to the same database, rather than failing `locked`: Stardust locks a file to one open, and a hot reload opens it again while the old handler still holds it."
     }
     fn signature(&self) -> Signature {
         Self::sig()
@@ -253,8 +253,19 @@ impl SimplePluginCommand for Open {
             }
             options.plugins = Some(plugins);
         }
-        let db = stardust::open(&path, &options).map_err(|e| sd_err(e, call.head))?;
-        let id = plugin.register(engine, db)?;
+        let plugins = format!("{:?}", options.plugins);
+        // Already open in this process: share it, if it was opened with the
+        // same plugins.
+        let db = match plugin.opened(&path) {
+            Some((db, opened)) if opened == plugins => db,
+            Some(_) => {
+                return Err(LabeledError::new("already open with other plugins")
+                    .with_label(format!("{path} is open in this session with plugins {}", plugins), call.head)
+                    .with_help("open it with the same --plugins, or close the other handles first"));
+            }
+            None => Arc::new(stardust::open(&path, &options).map_err(|e| sd_err(e, call.head))?),
+        };
+        let id = plugin.register(engine, path.clone(), plugins, db)?;
         Ok(Value::custom(Box::new(DbHandle { id, path }), call.head))
     }
 }
@@ -266,7 +277,7 @@ impl SimplePluginCommand for Close {
         "stardust close"
     }
     fn description(&self) -> &str {
-        "Close a database now, without waiting for its handle to be dropped."
+        "Close this handle now, without waiting for it to be dropped. The database closes when no handle uses it."
     }
     fn signature(&self) -> Signature {
         Self::sig()

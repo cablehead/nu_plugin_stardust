@@ -14,9 +14,10 @@ use crate::convert::sd_err;
 
 #[derive(Default)]
 pub struct StardustPlugin {
-    /// Open databases by handle ID. Streams hold their own `Arc`, so a
-    /// database stays open until its last stream finishes.
-    dbs: Mutex<HashMap<u64, Arc<Database>>>,
+    /// Open databases by handle ID, each with the path and plugins it was
+    /// opened with. Handles to one path share one `Database`; it closes when
+    /// the last handle and the last stream holding its `Arc` are gone.
+    dbs: Mutex<HashMap<u64, Open>>,
     next_id: AtomicU64,
     licensed: Mutex<bool>,
 }
@@ -50,6 +51,13 @@ impl Plugin for StardustPlugin {
     }
 }
 
+/// A handle's database, and what it was opened as.
+struct Open {
+    path: String,
+    plugins: String,
+    db: Arc<Database>,
+}
+
 impl StardustPlugin {
     /// Activates the license once per process. The library reads no
     /// environment or file itself, so the token comes from
@@ -79,9 +87,22 @@ impl StardustPlugin {
         Ok(())
     }
 
-    pub fn register(&self, engine: &EngineInterface, db: Database) -> Result<u64, ShellError> {
-        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        self.dbs.lock().expect("db lock").insert(id, Arc::new(db));
+    /// The database this process already has open at `path`, if any, and the
+    /// plugins it was opened with. Stardust locks a file to one open, so a
+    /// second `stardust open` of it (a hot reload's, say, while the old
+    /// handler still serves) shares this one instead of failing `locked`.
+    pub fn opened(&self, path: &str) -> Option<(Arc<Database>, String)> {
+        let dbs = self.dbs.lock().expect("db lock");
+        dbs.values().find(|o| o.path == path).map(|o| (o.db.clone(), o.plugins.clone()))
+    }
+
+    pub fn register(&self, engine: &EngineInterface, path: String, plugins: String, db: Arc<Database>) -> Result<u64, ShellError> {
+        // The plugin's pid in the high bits: a handle outlives this process
+        // when nu restarts the plugin (`plugin stop`), and its drop, which
+        // reaches the new process, must not close a database there that took
+        // the same count.
+        let id = (u64::from(std::process::id()) << 32) | self.next_id.fetch_add(1, Ordering::Relaxed);
+        self.dbs.lock().expect("db lock").insert(id, Open { path, plugins, db });
         // An idle plugin is stopped by nu's GC, which would close every database.
         engine.set_gc_disabled(true)?;
         Ok(id)
@@ -89,11 +110,15 @@ impl StardustPlugin {
 
     pub fn close(&self, engine: &EngineInterface, id: u64) -> Result<bool, ShellError> {
         let mut dbs = self.dbs.lock().expect("db lock");
-        let removed = dbs.remove(&id).is_some();
+        // The database closes with its last Arc, which calls into Stardust:
+        // drop it on the pool.
+        let removed = dbs.remove(&id);
+        let found = removed.is_some();
+        crate::pool::drop(removed);
         if dbs.is_empty() {
             engine.set_gc_disabled(false)?;
         }
-        Ok(removed)
+        Ok(found)
     }
 
     /// The database behind positional argument `index`.
@@ -101,7 +126,7 @@ impl StardustPlugin {
         let value: Value = call.req(index)?;
         let span = value.span();
         let handle = DbHandle::from_value(&value)?;
-        self.dbs.lock().expect("db lock").get(&handle.id).cloned().ok_or_else(|| {
+        self.dbs.lock().expect("db lock").get(&handle.id).map(|o| o.db.clone()).ok_or_else(|| {
             LabeledError::new("database is closed")
                 .with_label(format!("{} is no longer open", handle.path), span)
                 .with_help("closed with `stardust close`, or the plugin restarted: open it again")
